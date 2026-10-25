@@ -2,10 +2,9 @@
 
 #include "config.h"
 #include "sensores.h"
-
-// Versión incremental de la Etapa 1: adquisición no bloqueante de sensores
-// y validación por Monitor Serial. La integración con Telegram se agrega en
-// el siguiente commit.
+#include "wifi_manager.h"
+#include "telegram_bot.h"
+#include "alertas.h"
 
 namespace {
 
@@ -34,16 +33,32 @@ void setup() {
 
   Serial.println();
   Serial.println(F("=============================================="));
-  Serial.println(F(" IndoorWatch - Etapa 1: sensores ambientales"));
+  Serial.println(F(" IndoorWatch - Rover IoT de monitoreo"));
+  Serial.println(F(" Etapa 1: sensores ambientales + Telegram"));
   Serial.println(F("=============================================="));
 
   sensoresInit();
+  wifiInit();
+  telegramInit();
+  alertasInit();
 
   Serial.println(F("[SISTEMA] Listo. Monitor Serial a 115200 baudios."));
 }
 
 void loop() {
+  // Wi-Fi primero: mantiene la reconexión aunque no haya datos nuevos.
+  wifiTick();
+
+  // Adquisición no bloqueante cada INTERVALO_SENSORES_MS.
   if (sensoresTick()) {
     imprimirLecturas(sensoresLecturas());
   }
+
+  const LecturasAmbientales& lecturas = sensoresLecturas();
+
+  // Seguridad primero: las alertas no esperan al polling de Telegram.
+  alertasTick(lecturas);
+
+  // Comandos bajo demanda y aviso de conexión.
+  telegramTick(lecturas);
 }
