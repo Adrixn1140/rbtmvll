@@ -104,7 +104,8 @@ void alertasInit() {
   ultimoIntentoMs = 0;
   intentoFallido = false;
 
-  Serial.println(F("[ALERTAS] Umbrales: temp > 40.0 C, gas > 2700, flama LOW."));
+  Serial.printf("[ALERTAS] Umbrales: temp > %.1f C, gas > %d, flama LOW.\n",
+                UMBRAL_TEMP_C, UMBRAL_GAS_ADC);
 }
 
 void alertasTick(const LecturasAmbientales& lecturas) {

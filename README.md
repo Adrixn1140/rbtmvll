@@ -156,6 +156,11 @@ positivos. El MQ requiere un precalentamiento inicial (decenas de segundos, y
 para mayor precisión, varias horas); si el entorno cambia, recalibrar
 `UMBRAL_GAS_ADC` en `config.h`.
 
+> ⚠️ **Importante para la Etapa 3:** al instalar el divisor de 10 kΩ / 20 kΩ, la
+> tensión que llega al ADC se reduce a **2/3**. La línea base de ~2000 bajará a
+> ~1333 y el umbral de 2700 deberá recalibrarse (referencia inicial: ~1800).
+> El valor **2700 corresponde a la conexión directa actual**, sin divisor.
+
 La lectura de gas mostrada y evaluada es el **promedio de 8 muestras ADC**; el
 valor crudo de la última muestra se incluye en el Monitor Serial.
 
