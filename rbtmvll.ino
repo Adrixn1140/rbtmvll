@@ -6,6 +6,7 @@
 #include "telegram_bot.h"
 #include "alertas.h"
 #include "motores.h"
+#include "control_bt.h"
 
 namespace {
 
@@ -73,11 +74,12 @@ void setup() {
   Serial.println();
   Serial.println(F("=============================================="));
   Serial.println(F(" IndoorWatch - Rover IoT de monitoreo"));
-  Serial.println(F(" Etapa 1 + control de motores L298N"));
+  Serial.println(F(" Etapa 1 + motores L298N + mando Bluetooth"));
   Serial.println(F("=============================================="));
 
   sensoresInit();
   motoresInit();
+  controlBtInit();
   wifiInit();
   telegramInit();
   alertasInit();
@@ -86,7 +88,8 @@ void setup() {
 }
 
 void loop() {
-  // Motores y comandos locales primero: el control no espera a la red.
+  // Mando Bluetooth y motores primero: el control no espera a la red.
+  controlBtTick();
   motoresTick();
   procesarComandoSerial();
 
@@ -105,4 +108,7 @@ void loop() {
 
   // Comandos bajo demanda y aviso de conexión.
   telegramTick(lecturas);
+
+  // Cede tiempo al Bluetooth/Wi-Fi y evita el watchdog.
+  delay(1);
 }

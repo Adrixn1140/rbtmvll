@@ -64,4 +64,17 @@ constexpr bool MOTOR_B_INVERTIDO    = false;
 // Duración de cada movimiento manual por Telegram/Serial.
 constexpr unsigned long DURACION_MOVIMIENTO_MANUAL_MS = 1500UL;
 
+// ------------------------------------------------------------------
+// Mando Bluetooth (Bluepad32)
+// ------------------------------------------------------------------
+// Zona muerta de los ejes: evita que un stick suelto mueva el rover.
+constexpr int MANDO_ZONA_MUERTA = 80;
+
+// Si el mando deja de enviar datos, se detienen los motores.
+constexpr unsigned long MANDO_TIMEOUT_MS = 500UL;
+
+// Cambia estas banderas si el rover avanza/gira al revés con el mando.
+constexpr bool MANDO_EJE_Y_INVERTIDO = false;
+constexpr bool MANDO_EJE_X_INVERTIDO = false;
+
 #endif

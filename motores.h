@@ -14,6 +14,7 @@ enum class DireccionMovimiento : uint8_t {
 void motoresInit();
 void motoresTick();
 void motoresMover(DireccionMovimiento direccion, unsigned long duracionMs);
+void motoresControlContinuo(DireccionMovimiento direccion);
 void motoresDetener();
 void motoresDemo();
 bool motoresDemoActiva();

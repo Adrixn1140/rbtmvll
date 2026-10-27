@@ -3,6 +3,7 @@
 #include "secrets.h"
 #include "wifi_manager.h"
 #include "motores.h"
+#include "control_bt.h"
 
 #include <WiFiClientSecure.h>
 #include <UniversalTelegramBot.h>
@@ -80,6 +81,8 @@ String reporteEstado(const LecturasAmbientales& lecturas) {
 
   msg += F("🚗 Motores: ");
   msg += motoresEstadoTexto();
+  msg += F("\n🎮 Mando: ");
+  msg += controlBtConectado() ? controlBtNombre() : "desconectado";
   msg += F("\n");
 
   msg += F("📶 Wi-Fi: ");
@@ -99,6 +102,7 @@ void enviarAyuda() {
   msg += F("/ping — Estado del sistema\n");
   msg += F("/motores — Control de motores\n");
   msg += F("/demo — Prueba de motores\n");
+  msg += F("/mando — Estado del mando Bluetooth\n");
   msg += F("/id — ID de este chat\n");
   msg += F("/ayuda — Esta ayuda");
   telegramEnviarMensaje(msg);
@@ -116,7 +120,9 @@ void enviarAyudaMotores() {
   msg += String(DURACION_MOVIMIENTO_MANUAL_MS / 1000.0f, 1);
   msg += F(" s y luego se detienen solos.\n");
   msg += F("También puedes usar el Monitor Serial: ");
-  msg += F("a/r/i/d/s/p.");
+  msg += F("a/r/i/d/s/p.\n\n");
+  msg += F("🎮 Mando: stick izquierdo arriba/abajo para avanzar/retroceder, ");
+  msg += F("stick derecho izquierda/derecha para girar. Botón A = paro.");
   telegramEnviarMensaje(msg);
 }
 
@@ -168,6 +174,15 @@ void procesarMensaje(const telegramMessage& mensaje,
     telegramEnviarMensaje(pong);
   } else if (comando == "/id") {
     telegramEnviarMensaje(String(F("🆔 Chat ID autorizado: ")) + chatId);
+  } else if (comando == "/mando") {
+    if (controlBtConectado()) {
+      telegramEnviarMensaje(String(F("🎮 Mando conectado: ")) +
+                            controlBtNombre());
+    } else {
+      telegramEnviarMensaje(
+          F("🎮 Mando desconectado. Enciéndelo en modo Android (Home + A) "
+            "o Switch."));
+    }
   } else if (comando == "/motores" || comando == "/control") {
     enviarAyudaMotores();
   } else if (comando == "/demo" || comando == "/prueba") {

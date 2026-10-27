@@ -26,6 +26,7 @@ constexpr uint8_t TOTAL_PASOS_DEMO =
 DireccionMovimiento direccionActual = DireccionMovimiento::DETENIDO;
 unsigned long finMovimientoMs = 0;
 bool movimientoTemporalActivo = false;
+bool controlContinuoActivo = false;
 
 bool demoActiva = false;
 uint8_t pasoDemo = 0;
@@ -115,6 +116,7 @@ void motoresInit() {
 
 void motoresMover(DireccionMovimiento direccion, unsigned long duracionMs) {
   demoActiva = false;
+  controlContinuoActivo = false;
 
   if (direccion == DireccionMovimiento::DETENIDO) {
     motoresDetener();
@@ -129,16 +131,38 @@ void motoresMover(DireccionMovimiento direccion, unsigned long duracionMs) {
                 duracionMs);
 }
 
-void motoresDetener() {
+void motoresControlContinuo(DireccionMovimiento direccion) {
   demoActiva = false;
   movimientoTemporalActivo = false;
+  controlContinuoActivo = true;
+
+  if (direccion == direccionActual) {
+    return;
+  }
+
+  aplicarDireccion(direccion);
+  Serial.printf("[MOTORES] Mando: %s\n", motoresEstadoTexto());
+}
+
+void motoresDetener() {
+  const bool estabaActivo =
+      demoActiva || movimientoTemporalActivo || controlContinuoActivo ||
+      direccionActual != DireccionMovimiento::DETENIDO;
+
+  demoActiva = false;
+  movimientoTemporalActivo = false;
+  controlContinuoActivo = false;
   aplicarDireccion(DireccionMovimiento::DETENIDO);
-  Serial.println(F("[MOTORES] Detenido."));
+
+  if (estabaActivo) {
+    Serial.println(F("[MOTORES] Detenido."));
+  }
 }
 
 void motoresDemo() {
   demoActiva = true;
   movimientoTemporalActivo = false;
+  controlContinuoActivo = false;
   pasoDemo = 0;
   Serial.println(F("[MOTORES] Iniciando secuencia de demostracion."));
   iniciarPasoDemo();

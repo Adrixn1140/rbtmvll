@@ -5,13 +5,15 @@ variables ambientales en interiores, envía alertas en tiempo real por
 **Telegram** y, en fases posteriores, navegará evitando obstáculos y publicará
 telemetría por **MQTT**.
 
-> **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + Telegram) y
-> control básico de los motores con L298N por Telegram y Monitor Serial.
-> Pendiente: validación física, MQTT, ultrasonido, batería, evasión y mando
-> Bluetooth.
+> **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + Telegram), control
+> de los motores con L298N y control por mando **GameSir Nova Lite** mediante
+> **Bluepad32**. Pendiente: validación física del mando, MQTT, ultrasonido,
+> batería y evasión.
 
 - **Repositorio:** <https://github.com/Adrixn1140/rbtmvll>
-- **Placa:** ESP32 DevKit (Arduino-ESP32 3.x)
+- **Placa:** ESP32 DevKit clásica, chip detectado **ESP32-D0WD-V3** (Wi-Fi + Bluetooth Classic)
+- **Core para Bluetooth:** **ESP32 + Bluepad32 4.1.0**
+- **Core para compilar sin mando:** Arduino-ESP32 3.3.12
 - **Monitor Serial:** `115200` baudios
 - **Bot:** `@IndoorWatch_IoT_bot`
 
@@ -35,7 +37,7 @@ telemetría por **MQTT**.
 | :---: | --- | :---: |
 | **1** | DHT22 + MQ-2/MQ-135 + flama IR, Wi-Fi, comandos y alertas Telegram | ✅ Implementada |
 | **2** | Telemetría MQTT cada 10 s + dashboard (Ubidots / Blynk / ThingSpeak) | ⏳ Pendiente |
-| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC y evasión reactiva | 🟡 Motores L298N implementados; percepción y evasión pendientes |
+| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC, mando Bluetooth y evasión reactiva | 🟡 Motores y mando Bluetooth implementados; percepción y evasión pendientes |
 
 ### Etapa 2 — tópicos MQTT previstos
 
@@ -54,6 +56,7 @@ Publicación cada **10 segundos**:
 - Distancia **< 20 cm** → detener, retroceder, girar y reanudar la marcha.
 - Batería **< 20 %** → alerta por Telegram.
 - Control de tracción diferencial con L298N (dirección; PWM opcional).
+- Control manual directo con GameSir Nova Lite por Bluetooth Classic.
 
 ---
 
@@ -72,6 +75,8 @@ Publicación cada **10 segundos**:
                  │   wifi_manager.cpp ◄──────────┤           │
                  │        │                      ▼           │
                  │        └──────────────► telegram_bot.cpp │
+                 │                                          │
+ GameSir ──BT───►│ control_bt.cpp ──► motores.cpp ──► L298N  │
                  └───────────────────────┬──────────────────┘
                                          │ Wi-Fi 2.4 GHz
                                          ▼
@@ -89,14 +94,17 @@ Publicación cada **10 segundos**:
 | `telegram_bot.*` | Polling, comandos, respuestas y envío de mensajes |
 | `alertas.*` | Evaluación de umbrales, cooldown y normalización |
 | `motores.*` | Control no bloqueante del L298N, movimientos temporizados y demo |
+| `control_bt.*` | Emparejamiento y lectura del GameSir Nova Lite con Bluepad32 |
 | `secrets.h` | Credenciales reales (**ignorado por Git**) |
 | `secrets.example.h` | Plantilla de credenciales |
 
 ### Regla de oro: código no bloqueante
 
 Toda temporización se realiza con `millis()`. **No se usan `delay()` largos**.
-Esto es indispensable para la Etapa 3: el lazo principal debe seguir atendiendo
-el ultrasonido y los motores aunque se esté esperando el siguiente muestreo.
+Solo se usa `delay(1)` al final del `loop()` para ceder tiempo a Bluetooth/Wi-Fi
+y evitar el watchdog. Esto es indispensable para la Etapa 3: el lazo principal
+debe seguir atendiendo el mando, el ultrasonido y los motores aunque se esté
+esperando el siguiente muestreo.
 
 > Nota técnica: las librerías `DHT` y `UniversalTelegramBot` realizan esperas
 > internas breves (lectura del sensor y handshake TLS). Se aceptan en la Etapa 1
@@ -186,6 +194,49 @@ Si un motor gira al revés, cambia `MOTOR_A_INVERTIDO` o `MOTOR_B_INVERTIDO` a
 > En esta etapa el control es **solo de dirección**, a velocidad fija. Para usar
 > PWM habrá que retirar los jumpers ENA/ENB y conectarlos a GPIO 25 y 26.
 
+### 4.5 Control por mando Bluetooth
+
+La ESP32 clásica se conecta **directamente** al **GameSir Nova Lite** usando su
+Bluetooth interno y la biblioteca **Bluepad32**. No se usa el módulo HC-05/06 ni
+el teléfono como puente.
+
+| Control | Acción |
+| --- | --- |
+| Stick izquierdo arriba / abajo | Avanzar / retroceder |
+| Stick derecho izquierda / derecha | Girar a la izquierda / derecha |
+| Botón **A** | Paro inmediato |
+| Sin datos del mando durante 500 ms | Paro automático |
+| Mando desconectado | Paro automático |
+
+Para emparejar el GameSir Nova Lite:
+
+1. Enciende el mando en **modo Android** (`Home + A`) o **modo Switch**.
+2. Si no aparece, fuerza el emparejamiento con `Screenshot + Home`.
+3. Observa el Monitor Serial; debe aparecer:
+
+```text
+[BT] Mando conectado: GameSir Nova Lite ...
+```
+
+El mando solo funciona si el sketch se compila con la placa **ESP32 +
+Bluepad32**. Con el core estándar `esp32:esp32` el proyecto compila, pero el
+control Bluetooth queda deshabilitado y aparece un aviso en el Monitor Serial.
+
+> ⚠️ El GameSir Nova Lite usa **Bluetooth Classic (BR/EDR)**. La ESP32 debe ser
+> una **ESP32 clásica** (WROOM/WROVER). Las ESP32-S3, C3 y C6 no sirven para este
+> mando. Un HC-05/06/HM-10 tampoco puede actuar como host HID del mando.
+
+Si el rover avanza o gira al revés, cambia en `config.h`:
+
+```cpp
+constexpr bool MANDO_EJE_Y_INVERTIDO = true;  // invierte avance/retroceso
+constexpr bool MANDO_EJE_X_INVERTIDO = true;  // invierte izquierda/derecha
+```
+
+El Wi-Fi y el Bluetooth comparten radio. Si el control se siente lento, se puede
+reducir el polling de Telegram o desactivarlo temporalmente mientras se usa el
+mando.
+
 ---
 
 ## 5. Umbrales y calibración
@@ -265,6 +316,7 @@ rbtmvll/
 ├── telegram_bot.h / .cpp   # Bot, comandos y respuestas
 ├── alertas.h / .cpp        # Umbrales, cooldown y normalización
 ├── motores.h / .cpp        # L298N, movimientos y secuencia de prueba
+├── control_bt.h / .cpp     # GameSir Nova Lite con Bluepad32
 ├── secrets.example.h       # Plantilla de credenciales (sí se versiona)
 ├── secrets.h               # Credenciales reales (IGNORADO por Git)
 ├── .gitignore
@@ -281,12 +333,30 @@ rbtmvll/
 ### 8.1 Requisitos de software
 
 - Arduino IDE 2.x.
-- Núcleo **ESP32 by Espressif Systems** (probado con `3.3.12`).
+- Para usar el mando: placa **ESP32 + Bluepad32** (`4.1.0`).
+- Para compilar sin mando: núcleo **ESP32 by Espressif Systems** (`3.3.12`).
 - Bibliotecas (Library Manager):
   - **DHT sensor library** de Adafruit (`1.4.7` o superior).
   - **Adafruit Unified Sensor** (dependencia de la anterior).
   - **UniversalTelegramBot** de Brian Lough (`1.3.0` o superior).
   - **ArduinoJson** (`7.x`).
+
+#### Instalar ESP32 + Bluepad32
+
+1. En Arduino IDE: **Archivo → Preferencias → Gestor de placas adicionales**.
+2. Agregar esta URL:
+
+```text
+https://raw.githubusercontent.com/ricardoquesada/esp32-arduino-lib-builder/master/bluepad32_files/package_esp32_bluepad32_index.json
+```
+
+3. Abrir **Herramientas → Placa → Gestor de placas**, buscar
+   **ESP32 + Bluepad32** e instalar la versión **4.1.0**.
+4. Seleccionar la placa **ESP32 Dev Module** dentro del paquete
+   **ESP32 + Bluepad32**.
+5. En **Herramientas → Partition Scheme**, elegir
+   **Huge APP (3MB No OTA/1MB SPIFFS)**. La partición por defecto de 1.2 MB no
+   alcanza para Bluepad32 + Wi-Fi + Telegram.
 
 ### 8.2 Configurar credenciales
 
@@ -307,32 +377,46 @@ git check-ignore -v secrets.h
 Desde Arduino IDE:
 
 1. Abrir `rbtmvll.ino`.
-2. Seleccionar placa **ESP32 Dev Module** y el puerto COM correspondiente.
-3. **Verificar** y luego **Subir**.
-4. Abrir el Monitor Serial a **115200 baudios**.
+2. Seleccionar la placa **ESP32 Dev Module** del paquete
+   **ESP32 + Bluepad32**.
+3. Seleccionar **Huge APP (3MB No OTA/1MB SPIFFS)** como esquema de partición.
+4. **Verificar** y luego **Subir**.
+5. Abrir el Monitor Serial a **115200 baudios**.
 
 Desde Arduino CLI:
 
 ```bash
-arduino-cli compile --fqbn esp32:esp32:esp32 .
-arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
+arduino-cli compile --fqbn esp32-bluepad32:esp32:esp32 \
+  --board-options PartitionScheme=huge_app .
+arduino-cli upload -p COM7 --fqbn esp32-bluepad32:esp32:esp32 \
+  --board-options PartitionScheme=huge_app .
 ```
+
+> Si se compila con el core estándar `esp32:esp32:esp32`, el proyecto sigue
+> compilando, pero el mando Bluetooth queda deshabilitado (funciones de
+> respaldo). Para controlarlo por Bluetooth hay que usar el FQBN
+> `esp32-bluepad32:esp32:esp32`.
 
 ### 8.4 Salida esperada del Monitor Serial
 
 ```text
 ==============================================
  IndoorWatch - Rover IoT de monitoreo
- Etapa 1 + control de motores L298N
+ Etapa 1 + motores L298N + mando Bluetooth
 ==============================================
 [SENSORES] DHT22=GPIO13, MQ=GPIO34, FLAMA=GPIO35
 [MOTORES] L298N listo: IN1=18 IN2=19 IN3=22 IN4=23. ENA/ENB con jumpers (velocidad fija).
 [MOTORES] Serial: a=adelante r=atras i=izquierda d=derecha s=detener p=demo
+[BT] Bluepad32 for Arduino v4.1.0
+[BT] Direccion local: XX:XX:XX:XX:XX:XX
+[BT] Esperando mando GameSir Nova Lite...
+[BT] Pon el mando en modo Android (Home + A) o Switch.
 [WIFI] Conectando a la red: MiRed
 [SISTEMA] Listo. Monitor Serial a 115200 baudios.
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm
 [TELEGRAM] Aviso de inicio enviado correctamente.
 [SENSOR] T=25.4 C | H=58.7 % | GAS=1987 (crudo=2003) | FLAMA=NO
+[BT] Mando conectado: GameSir Nova Lite (indice 0)
 ```
 
 ---
@@ -354,6 +438,10 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
 - [ ] Con el rover sobre bloques, `/demo` mueve ambos motores en ambos sentidos.
 - [ ] `/detener` detiene los motores inmediatamente.
 - [ ] Los comandos `a`, `r`, `i`, `d`, `s` y `p` funcionan por Monitor Serial.
+- [ ] El Monitor Serial muestra `[BT] Mando conectado` al encender el GameSir.
+- [ ] El stick izquierdo mueve adelante/atrás y el derecho gira.
+- [ ] El botón **A** detiene los motores.
+- [ ] Al apagar el mando, el rover se detiene solo.
 
 > Para probar alertas sin fuego real: usar una fuente de luz IR o un
 > encendedor **sin encender** para gas; nunca exponer los sensores a llamas
@@ -377,9 +465,15 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
 - El módulo MQ necesita el divisor de tensión definitivo antes de conectar su
   salida al ADC de la ESP32.
 - Antes de probar los motores, colocar el rover sobre bloques. Los comandos
-  `/demo`, `/adelante`, `/atras`, `/izquierda` y `/derecha` pueden moverlo.
+  `/demo`, `/adelante`, `/atras`, `/izquierda`, `/derecha` y los sticks del
+  mando pueden moverlo.
 - Los jumpers ENA/ENB deben estar puestos si no se usa PWM; de lo contrario los
   motores no recibirán habilitación.
+- Con el mando, mantener una mano cerca del interruptor de alimentación. El
+  botón **A** es el paro de emergencia y, si el enlace Bluetooth se pierde, el
+  firmware detiene los motores automáticamente.
+- No usar un módulo HC-05/06/HM-10 para el mando: no puede actuar como host HID.
+  Bluepad32 usa el Bluetooth interno de la ESP32 clásica.
 
 ---
 
@@ -400,16 +494,18 @@ git push origin main
 
 ## 12. Próximos pasos
 
-1. Validar los motores en hardware, ajustar el sentido de giro y confirmar que
-   ambos se detienen correctamente.
-2. Integrar el HC-SR04 y el divisor de batería; validar el ECHO con su divisor.
-3. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
+1. Validar en hardware el mando GameSir Nova Lite y los motores; ajustar los
+   sentidos de giro y confirmar el paro por botón A, timeout y desconexión.
+2. Medir la latencia y estabilidad de Wi-Fi + Bluetooth; si es necesario,
+   reducir el polling de Telegram mientras el mando esté conectado.
+3. Integrar el HC-SR04 y el divisor de batería; validar el ECHO con su divisor.
+4. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
    RETROCEDER → GIRAR → AVANZAR`.
-4. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
+5. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
    publicación cada 10 s a `rover/temp`, `rover/hum`, `rover/gas`,
    `rover/flama` y `rover/bateria`.
-5. Integrar el mando GameSir Nova Lite con Bluepad32.
-6. Añadir pruebas de integración y registro de datos para el dashboard.
+6. Añadir PWM en ENA/ENB para velocidad proporcional y control más fino.
+7. Añadir pruebas de integración y registro de datos para el dashboard.
 
 ---
 
