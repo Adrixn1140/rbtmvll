@@ -61,7 +61,7 @@ Publicación cada **10 segundos**:
                  ┌──────────────────────────────────────────┐
                  │                  ESP32                   │
                  │                                          │
-  DHT22  ───────►│ GPIO 4   ┐                               │
+  DHT22  ───────►│ GPIO 13  ┐                               │
   MQ-2   ───────►│ GPIO 34  ├──► sensores.cpp ──┐           │
   Flama  ───────►│ GPIO 35  ┘                    │           │
                  │                               ▼           │
@@ -107,7 +107,7 @@ el ultrasonido y los motores aunque se esté esperando el siguiente muestreo.
 
 | Componente | Señal | GPIO | Alimentación | Notas |
 | --- | --- | :---: | :---: | --- |
-| **DHT22** | DATA | **4** | 3.3 V | Requiere pull-up de 10 kΩ a 3.3 V (muchos módulos lo incluyen) |
+| **DHT22** | DATA | **13** | 3.3 V | Requiere pull-up de 10 kΩ a 3.3 V (muchos módulos lo incluyen) |
 | **MQ-2 / MQ-135** | AO | **34** | 5 V (VIN) | ADC1, solo entrada. Línea base ≈ 2000 |
 | **Flama IR (LM393)** | DO / OUT | **35** | 3.3 V | ADC1, solo entrada. `LOW` = fuego, `HIGH` = normal |
 
@@ -123,20 +123,41 @@ el ultrasonido y los motores aunque se esté esperando el siguiente muestreo.
 | --- | --- | :---: | --- |
 | **Divisor de batería** | Punto medio | **32** | 2× 18650 en serie (7.4 V nominal / 8.4 V máx), R 20 kΩ + 10 kΩ |
 | **HC-SR04** | TRIG | **5** | Salida de disparo |
-| **HC-SR04** | ECHO | **18** | Divisor 1 kΩ / 2 kΩ para bajar 5 V → 3.3 V |
-| **L298N** | IN1 | **26** | Dirección motor A |
-| **L298N** | IN2 | **27** | Dirección motor A |
-| **L298N** | IN3 | **14** | Dirección motor B |
-| **L298N** | IN4 | **13** | Dirección motor B |
-| **L298N** | ENA (PWM) | **25** | Velocidad motor A |
-| **L298N** | ENB (PWM) | **33** | Velocidad motor B |
+| **HC-SR04** | ECHO | **21** | Divisor 1 kΩ / 2 kΩ para bajar 5 V → 3.3 V |
+| **L298N** | IN1 | **18** | Dirección motor A |
+| **L298N** | IN2 | **19** | Dirección motor A |
+| **L298N** | IN3 | **22** | Dirección motor B |
+| **L298N** | IN4 | **23** | Dirección motor B |
+| **L298N** | ENA (PWM) | **25** | Velocidad motor A (opcional; requiere quitar el jumper ENA) |
+| **L298N** | ENB (PWM) | **33** | Velocidad motor B (opcional; requiere quitar el jumper ENB) |
 
 Criterios del mapa de pines:
 
 - Entradas analógicas en **ADC1** (GPIO 32–39) para que el Wi-Fi no interfiera.
 - **GPIO 12 evitado** por ser pin de arranque (*strapping*).
 - GPIO 34 y 35 son **solo entrada**, sin pull-up interno.
+- GPIO 18 se usa para el L298N; por eso el ECHO del HC-SR04 se movió a **GPIO 21**.
 - Alimentación de motores **independiente** de la ESP32, con **GND común**.
+
+### 4.3 Alimentación del L298N
+
+| Terminal L298N | Conexión |
+| --- | --- |
+| **+12V / VMS** | Positivo del pack 2×18650 (7.4–8.4 V) |
+| **GND** | Negativo de la batería **y** GND de la ESP32 |
+| **+5V** | Salida del regulador de 5 V del módulo; **no** conectar al pin 3.3 V de la ESP32 |
+| **OUT1 / OUT2** | Motor A |
+| **OUT3 / OUT4** | Motor B |
+
+> El L298N **no se alimenta desde la ESP32**. La ESP32 solo entrega las señales
+> IN1–IN4 y, si se usa PWM, ENA/ENB. La potencia de los motores va a la batería.
+> Si la ESP32 se alimenta por USB durante las pruebas, su GND debe quedar unido
+> al GND del L298N y al negativo de la batería.
+>
+> Para 2×18650 se puede dejar puesto el jumper de 5 V del L298N. Si se alimenta
+> con más de 12 V, se debe quitar ese jumper y entregar 5 V externos al terminal
+> **+5V**. Para el montaje final se recomienda un convertidor reductor de 5 V
+> independiente para la ESP32, no la salida de 5 V del L298N.
 
 ---
 
@@ -269,7 +290,7 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
  IndoorWatch - Rover IoT de monitoreo
  Etapa 1: sensores ambientales + Telegram
 ==============================================
-[SENSORES] DHT22=GPIO4, MQ=GPIO34, FLAMA=GPIO35
+[SENSORES] DHT22=GPIO13, MQ=GPIO34, FLAMA=GPIO35
 [WIFI] Conectando a la red: MiRed
 [SISTEMA] Listo. Monitor Serial a 115200 baudios.
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm

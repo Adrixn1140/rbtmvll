@@ -55,7 +55,8 @@ void sensoresInit() {
   // tiempo de estabilización al DHT22.
   ultimaLecturaMs = millis();
 
-  Serial.println(F("[SENSORES] DHT22=GPIO4, MQ=GPIO34, FLAMA=GPIO35"));
+  Serial.printf("[SENSORES] DHT22=GPIO%d, MQ=GPIO%d, FLAMA=GPIO%d\n",
+                PIN_DHT22, PIN_MQ_ANALOG, PIN_FLAMA);
 }
 
 bool sensoresTick() {
