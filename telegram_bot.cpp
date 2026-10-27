@@ -2,6 +2,7 @@
 #include "config.h"
 #include "secrets.h"
 #include "wifi_manager.h"
+#include "motores.h"
 
 #include <WiFiClientSecure.h>
 #include <UniversalTelegramBot.h>
@@ -77,6 +78,10 @@ String reporteEstado(const LecturasAmbientales& lecturas) {
     msg += F(" s\n");
   }
 
+  msg += F("🚗 Motores: ");
+  msg += motoresEstadoTexto();
+  msg += F("\n");
+
   msg += F("📶 Wi-Fi: ");
   msg += String(wifiRssi());
   msg += F(" dBm\n🕒 Uptime: ");
@@ -92,8 +97,26 @@ void enviarAyuda() {
   msg += F("/sensores — Igual que /estado\n");
   msg += F("/umbrales — Límites de alerta\n");
   msg += F("/ping — Estado del sistema\n");
+  msg += F("/motores — Control de motores\n");
+  msg += F("/demo — Prueba de motores\n");
   msg += F("/id — ID de este chat\n");
   msg += F("/ayuda — Esta ayuda");
+  telegramEnviarMensaje(msg);
+}
+
+void enviarAyudaMotores() {
+  String msg = F("🚗 *Control de motores — L298N*\n\n");
+  msg += F("/demo — Secuencia automática de prueba\n");
+  msg += F("/adelante — Avanzar 1.5 s\n");
+  msg += F("/atras — Retroceder 1.5 s\n");
+  msg += F("/izquierda — Girar a la izquierda 1.5 s\n");
+  msg += F("/derecha — Girar a la derecha 1.5 s\n");
+  msg += F("/detener — Parar inmediatamente\n\n");
+  msg += F("Los movimientos manuales duran ");
+  msg += String(DURACION_MOVIMIENTO_MANUAL_MS / 1000.0f, 1);
+  msg += F(" s y luego se detienen solos.\n");
+  msg += F("También puedes usar el Monitor Serial: ");
+  msg += F("a/r/i/d/s/p.");
   telegramEnviarMensaje(msg);
 }
 
@@ -145,6 +168,32 @@ void procesarMensaje(const telegramMessage& mensaje,
     telegramEnviarMensaje(pong);
   } else if (comando == "/id") {
     telegramEnviarMensaje(String(F("🆔 Chat ID autorizado: ")) + chatId);
+  } else if (comando == "/motores" || comando == "/control") {
+    enviarAyudaMotores();
+  } else if (comando == "/demo" || comando == "/prueba") {
+    telegramEnviarMensaje(
+        F("🚗 Demo iniciada: adelante, atrás, izquierda y derecha."));
+    motoresDemo();
+  } else if (comando == "/adelante") {
+    telegramEnviarMensaje(F("⬆️ Adelante durante 1.5 s."));
+    motoresMover(DireccionMovimiento::ADELANTE,
+                 DURACION_MOVIMIENTO_MANUAL_MS);
+  } else if (comando == "/atras") {
+    telegramEnviarMensaje(F("⬇️ Atrás durante 1.5 s."));
+    motoresMover(DireccionMovimiento::ATRAS,
+                 DURACION_MOVIMIENTO_MANUAL_MS);
+  } else if (comando == "/izquierda") {
+    telegramEnviarMensaje(F("⬅️ Izquierda durante 1.5 s."));
+    motoresMover(DireccionMovimiento::IZQUIERDA,
+                 DURACION_MOVIMIENTO_MANUAL_MS);
+  } else if (comando == "/derecha") {
+    telegramEnviarMensaje(F("➡️ Derecha durante 1.5 s."));
+    motoresMover(DireccionMovimiento::DERECHA,
+                 DURACION_MOVIMIENTO_MANUAL_MS);
+  } else if (comando == "/detener" || comando == "/stop" ||
+             comando == "/frenar") {
+    motoresDetener();
+    telegramEnviarMensaje(F("🛑 Motores detenidos."));
   } else if (comando.startsWith("/")) {
     telegramEnviarMensaje(
         F("❓ Comando no reconocido. Usa /ayuda para ver las opciones."));

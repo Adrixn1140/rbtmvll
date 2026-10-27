@@ -5,8 +5,47 @@
 #include "wifi_manager.h"
 #include "telegram_bot.h"
 #include "alertas.h"
+#include "motores.h"
 
 namespace {
+
+void procesarComandoSerial() {
+  while (Serial.available() > 0) {
+    const char comando = static_cast<char>(Serial.read());
+    switch (comando) {
+      case 'a':
+      case 'A':
+        motoresMover(DireccionMovimiento::ADELANTE,
+                     DURACION_MOVIMIENTO_MANUAL_MS);
+        break;
+      case 'r':
+      case 'R':
+        motoresMover(DireccionMovimiento::ATRAS,
+                     DURACION_MOVIMIENTO_MANUAL_MS);
+        break;
+      case 'i':
+      case 'I':
+        motoresMover(DireccionMovimiento::IZQUIERDA,
+                     DURACION_MOVIMIENTO_MANUAL_MS);
+        break;
+      case 'd':
+      case 'D':
+        motoresMover(DireccionMovimiento::DERECHA,
+                     DURACION_MOVIMIENTO_MANUAL_MS);
+        break;
+      case 's':
+      case 'S':
+        motoresDetener();
+        break;
+      case 'p':
+      case 'P':
+        motoresDemo();
+        break;
+      default:
+        break;
+    }
+  }
+}
 
 void imprimirLecturas(const LecturasAmbientales& lecturas) {
   if (lecturas.dhtValida) {
@@ -34,10 +73,11 @@ void setup() {
   Serial.println();
   Serial.println(F("=============================================="));
   Serial.println(F(" IndoorWatch - Rover IoT de monitoreo"));
-  Serial.println(F(" Etapa 1: sensores ambientales + Telegram"));
+  Serial.println(F(" Etapa 1 + control de motores L298N"));
   Serial.println(F("=============================================="));
 
   sensoresInit();
+  motoresInit();
   wifiInit();
   telegramInit();
   alertasInit();
@@ -46,7 +86,11 @@ void setup() {
 }
 
 void loop() {
-  // Wi-Fi primero: mantiene la reconexión aunque no haya datos nuevos.
+  // Motores y comandos locales primero: el control no espera a la red.
+  motoresTick();
+  procesarComandoSerial();
+
+  // Wi-Fi: mantiene la reconexión aunque no haya datos nuevos.
   wifiTick();
 
   // Adquisición no bloqueante cada INTERVALO_SENSORES_MS.

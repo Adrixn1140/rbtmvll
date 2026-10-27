@@ -5,8 +5,10 @@ variables ambientales en interiores, envía alertas en tiempo real por
 **Telegram** y, en fases posteriores, navegará evitando obstáculos y publicará
 telemetría por **MQTT**.
 
-> **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + bot de Telegram).
-> Pendiente la validación física sobre el protoboard y el montaje final.
+> **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + Telegram) y
+> control básico de los motores con L298N por Telegram y Monitor Serial.
+> Pendiente: validación física, MQTT, ultrasonido, batería, evasión y mando
+> Bluetooth.
 
 - **Repositorio:** <https://github.com/Adrixn1140/rbtmvll>
 - **Placa:** ESP32 DevKit (Arduino-ESP32 3.x)
@@ -33,7 +35,7 @@ telemetría por **MQTT**.
 | :---: | --- | :---: |
 | **1** | DHT22 + MQ-2/MQ-135 + flama IR, Wi-Fi, comandos y alertas Telegram | ✅ Implementada |
 | **2** | Telemetría MQTT cada 10 s + dashboard (Ubidots / Blynk / ThingSpeak) | ⏳ Pendiente |
-| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC y evasión reactiva | ⏳ Pendiente |
+| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC y evasión reactiva | 🟡 Motores L298N implementados; percepción y evasión pendientes |
 
 ### Etapa 2 — tópicos MQTT previstos
 
@@ -51,7 +53,7 @@ Publicación cada **10 segundos**:
 
 - Distancia **< 20 cm** → detener, retroceder, girar y reanudar la marcha.
 - Batería **< 20 %** → alerta por Telegram.
-- Control de tracción diferencial con L298N y PWM.
+- Control de tracción diferencial con L298N (dirección; PWM opcional).
 
 ---
 
@@ -86,6 +88,7 @@ Publicación cada **10 segundos**:
 | `wifi_manager.*` | Conexión y reconexión Wi-Fi no bloqueante |
 | `telegram_bot.*` | Polling, comandos, respuestas y envío de mensajes |
 | `alertas.*` | Evaluación de umbrales, cooldown y normalización |
+| `motores.*` | Control no bloqueante del L298N, movimientos temporizados y demo |
 | `secrets.h` | Credenciales reales (**ignorado por Git**) |
 | `secrets.example.h` | Plantilla de credenciales |
 
@@ -160,6 +163,29 @@ Criterios del mapa de pines:
 > **+5V**. Para el montaje final se recomienda un convertidor reductor de 5 V
 > independiente para la ESP32, no la salida de 5 V del L298N.
 
+### 4.4 Prueba de motores
+
+1. Coloca el rover **sobre bloques** para que las ruedas giren sin desplazarse.
+2. Verifica que los jumpers **ENA** y **ENB** estén puestos.
+3. Conecta la alimentación del L298N y une el GND con la ESP32.
+4. En Telegram, envía `/demo` para ejecutar la secuencia completa.
+5. También puedes usar el Monitor Serial:
+   - `a` = adelante
+   - `r` = atrás
+   - `i` = izquierda
+   - `d` = derecha
+   - `s` = detener
+   - `p` = demo
+
+Los movimientos manuales duran **1.5 s** y se detienen solos. `/detener` corta
+cualquier movimiento de inmediato.
+
+Si un motor gira al revés, cambia `MOTOR_A_INVERTIDO` o `MOTOR_B_INVERTIDO` a
+`true` en `config.h`, o intercambia los dos cables de ese motor en el L298N.
+
+> En esta etapa el control es **solo de dirección**, a velocidad fija. Para usar
+> PWM habrá que retirar los jumpers ENA/ENB y conectarlos a GPIO 25 y 26.
+
 ---
 
 ## 5. Umbrales y calibración
@@ -199,6 +225,13 @@ valor crudo de la última muestra se incluye en el Monitor Serial.
 | `/sensores` | Alias de `/estado` |
 | `/umbrales` | Límites de alerta configurados |
 | `/ping` | Uptime, RSSI, IP y memoria libre |
+| `/motores` | Ayuda del control de motores |
+| `/demo` | Secuencia automática: adelante, atrás, izquierda y derecha |
+| `/adelante` | Avanzar durante 1.5 s |
+| `/atras` | Retroceder durante 1.5 s |
+| `/izquierda` | Girar a la izquierda durante 1.5 s |
+| `/derecha` | Girar a la derecha durante 1.5 s |
+| `/detener` | Parar los motores inmediatamente |
 | `/id` | Chat ID autorizado |
 | `/ayuda` | Lista de comandos |
 
@@ -231,6 +264,7 @@ rbtmvll/
 ├── wifi_manager.h / .cpp   # Wi-Fi no bloqueante y reconexión
 ├── telegram_bot.h / .cpp   # Bot, comandos y respuestas
 ├── alertas.h / .cpp        # Umbrales, cooldown y normalización
+├── motores.h / .cpp        # L298N, movimientos y secuencia de prueba
 ├── secrets.example.h       # Plantilla de credenciales (sí se versiona)
 ├── secrets.h               # Credenciales reales (IGNORADO por Git)
 ├── .gitignore
@@ -289,9 +323,11 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
 ```text
 ==============================================
  IndoorWatch - Rover IoT de monitoreo
- Etapa 1: sensores ambientales + Telegram
+ Etapa 1 + control de motores L298N
 ==============================================
 [SENSORES] DHT22=GPIO13, MQ=GPIO34, FLAMA=GPIO35
+[MOTORES] L298N listo: IN1=18 IN2=19 IN3=22 IN4=23. ENA/ENB con jumpers (velocidad fija).
+[MOTORES] Serial: a=adelante r=atras i=izquierda d=derecha s=detener p=demo
 [WIFI] Conectando a la red: MiRed
 [SISTEMA] Listo. Monitor Serial a 115200 baudios.
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm
@@ -315,6 +351,9 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
 - [ ] Al retirar la condición crítica, llega el mensaje de normalización.
 - [ ] La alerta no se repite antes de 60 s mientras la condición persiste.
 - [ ] Al desconectar el router, la ESP32 reintenta y se recupera al volver.
+- [ ] Con el rover sobre bloques, `/demo` mueve ambos motores en ambos sentidos.
+- [ ] `/detener` detiene los motores inmediatamente.
+- [ ] Los comandos `a`, `r`, `i`, `d`, `s` y `p` funcionan por Monitor Serial.
 
 > Para probar alertas sin fuego real: usar una fuente de luz IR o un
 > encendedor **sin encender** para gas; nunca exponer los sensores a llamas
@@ -337,6 +376,10 @@ arduino-cli upload -p COM7 --fqbn esp32:esp32:esp32 .
   Usar una fuente/pack de baterías adecuado y **GND común**.
 - El módulo MQ necesita el divisor de tensión definitivo antes de conectar su
   salida al ADC de la ESP32.
+- Antes de probar los motores, colocar el rover sobre bloques. Los comandos
+  `/demo`, `/adelante`, `/atras`, `/izquierda` y `/derecha` pueden moverlo.
+- Los jumpers ENA/ENB deben estar puestos si no se usa PWM; de lo contrario los
+  motores no recibirán habilitación.
 
 ---
 
@@ -357,15 +400,16 @@ git push origin main
 
 ## 12. Próximos pasos
 
-1. Validar la Etapa 1 en hardware y ajustar el umbral de gas con la línea base
-   real del entorno.
-2. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
+1. Validar los motores en hardware, ajustar el sentido de giro y confirmar que
+   ambos se detienen correctamente.
+2. Integrar el HC-SR04 y el divisor de batería; validar el ECHO con su divisor.
+3. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
+   RETROCEDER → GIRAR → AVANZAR`.
+4. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
    publicación cada 10 s a `rover/temp`, `rover/hum`, `rover/gas`,
    `rover/flama` y `rover/bateria`.
-3. Integrar HC-SR04, divisor de batería, L298N y motores (Etapa 3).
-4. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
-   RETROCEDER → GIRAR → AVANZAR`.
-5. Añadir pruebas de integración y registro de datos para el dashboard.
+5. Integrar el mando GameSir Nova Lite con Bluepad32.
+6. Añadir pruebas de integración y registro de datos para el dashboard.
 
 ---
 
