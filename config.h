@@ -41,14 +41,14 @@ constexpr float   TEMP_MAX_VALIDA_C = 80.0f;
 // ------------------------------------------------------------------
 // Etapa 3 (documentada, NO inicializada todavía)
 //
-// Batería (2x 18650, divisor 20 kΩ / 10 kΩ) .... GPIO 32 (ADC1)
-// HC-SR04: TRIG ............................... GPIO 5
-// HC-SR04: ECHO (divisor 1 kΩ / 2 kΩ) ......... GPIO 21
+// Batería (2x 18650, divisor 20 kΩ / 10 kΩ) .... GPIO 36 (ADC1, solo entrada)
+// HC-SR04: TRIG ............................... GPIO 32
+// HC-SR04: ECHO (divisor 1 kΩ / 2 kΩ) ......... GPIO 33
 // L298N: IN1 / IN2 / IN3 / IN4 ................ GPIO 18 / 19 / 22 / 23
-// L298N: ENA (PWM) / ENB (PWM) ................ GPIO 25 / 33 (opcional)
+// L298N: ENA (PWM) / ENB (PWM) ................ GPIO 25 / 26 (opcional)
 //
-// GPIO 18 se reasignó al L298N; por eso el ECHO del HC-SR04 se movió
-// a GPIO 21 para evitar el conflicto.
+// El HC-SR04 ocupa GPIO 32 y 33; por eso la medición de batería se movió
+// a GPIO 36 y ENB a GPIO 26 para evitar conflictos.
 //
 // Se dejan fuera de config.h para no energizar accidentalmente los
 // motores durante las pruebas de la Etapa 1.

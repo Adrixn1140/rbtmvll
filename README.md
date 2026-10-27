@@ -121,22 +121,23 @@ el ultrasonido y los motores aunque se esté esperando el siguiente muestreo.
 
 | Componente | Señal | GPIO | Notas |
 | --- | --- | :---: | --- |
-| **Divisor de batería** | Punto medio | **32** | 2× 18650 en serie (7.4 V nominal / 8.4 V máx), R 20 kΩ + 10 kΩ |
-| **HC-SR04** | TRIG | **5** | Salida de disparo |
-| **HC-SR04** | ECHO | **21** | Divisor 1 kΩ / 2 kΩ para bajar 5 V → 3.3 V |
+| **Divisor de batería** | Punto medio | **36** | 2× 18650 en serie (7.4 V nominal / 8.4 V máx), R 20 kΩ + 10 kΩ. GPIO 36 es solo entrada |
+| **HC-SR04** | TRIG | **32** | Salida de disparo |
+| **HC-SR04** | ECHO | **33** | Divisor 1 kΩ / 2 kΩ para bajar 5 V → 3.3 V |
 | **L298N** | IN1 | **18** | Dirección motor A |
 | **L298N** | IN2 | **19** | Dirección motor A |
 | **L298N** | IN3 | **22** | Dirección motor B |
 | **L298N** | IN4 | **23** | Dirección motor B |
 | **L298N** | ENA (PWM) | **25** | Velocidad motor A (opcional; requiere quitar el jumper ENA) |
-| **L298N** | ENB (PWM) | **33** | Velocidad motor B (opcional; requiere quitar el jumper ENB) |
+| **L298N** | ENB (PWM) | **26** | Velocidad motor B (opcional; requiere quitar el jumper ENB) |
 
 Criterios del mapa de pines:
 
 - Entradas analógicas en **ADC1** (GPIO 32–39) para que el Wi-Fi no interfiera.
 - **GPIO 12 evitado** por ser pin de arranque (*strapping*).
-- GPIO 34 y 35 son **solo entrada**, sin pull-up interno.
-- GPIO 18 se usa para el L298N; por eso el ECHO del HC-SR04 se movió a **GPIO 21**.
+- GPIO 34, 35 y 36 son **solo entrada**, sin pull-up interno.
+- El HC-SR04 ocupa GPIO 32 (TRIG) y GPIO 33 (ECHO); por eso la batería se movió a **GPIO 36** y ENB a **GPIO 26**.
+- El ECHO del HC-SR04 entrega 5 V: es **obligatorio** el divisor 1 kΩ / 2 kΩ antes de GPIO 33.
 - Alimentación de motores **independiente** de la ESP32, con **GND común**.
 
 ### 4.3 Alimentación del L298N
