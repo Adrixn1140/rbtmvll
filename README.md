@@ -1,23 +1,27 @@
 # 🤖 IndoorWatch — Rover IoT de Monitoreo Ambiental en Interiores
 
 Firmware para un vehículo robótico basado en **ESP32** que monitorea variables
-ambientales en interiores, envía alertas por **Telegram** y se controla desde el
-celular mediante un **módulo Bluetooth serial** (HC-05 / HC-06 / HM-10).
+ambientales en interiores, envía alertas por **Telegram** y se controla con un
+mando **GameSir Nova Lite** conectado directamente por Bluetooth usando
+**Bluepad32**. El módulo **HC-05/06/HM-10** queda como respaldo para controlar
+desde el celular cuando el mando está desconectado.
 
 > **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + Telegram), motores
-> L298N y control por Bluetooth serial implementados. Pendiente: validación
-> física, MQTT, ultrasonido, lectura de batería y evasión de obstáculos.
+> L298N, mando GameSir con Bluepad32 y Bluetooth serial de respaldo
+> implementados. Pendiente: validación física del mando, MQTT, ultrasonido,
+> lectura de batería y evasión de obstáculos.
 >
-> **Importante:** se eliminó la integración directa con el mando GameSir y
-> Bluepad32. Ahora el control es: **celular → módulo Bluetooth serial → ESP32**.
-> Un HC-05/06/HM-10 **no** puede conectarse directamente al mando GameSir porque
-> no es un host HID; solo sirve como puente serial para el teléfono.
+> **Importante:** el control principal es **ESP32 ↔ GameSir** con Bluepad32.
+> El HC-05/06/HM-10 **no** puede actuar como host HID del mando; solo sirve como
+> puente serial para el teléfono y se usa únicamente cuando no hay mando
+> conectado.
 
 - **Repositorio:** <https://github.com/Adrixn1140/rbtmvll>
 - **Placa:** ESP32 DevKit clásica, chip detectado **ESP32-D0WD-V3**
-- **Core:** Arduino-ESP32 **3.3.12** (`esp32:esp32:esp32`)
+- **Core para el mando:** **ESP32 + Bluepad32 4.1.0** (`esp32-bluepad32:esp32:esp32`)
+- **Core para el respaldo:** Arduino-ESP32 **3.3.12** (`esp32:esp32:esp32`)
 - **Monitor Serial USB:** `115200` baudios
-- **Bluetooth serial:** `9600` baudios, 8N1
+- **Bluetooth serial de respaldo:** `9600` baudios, 8N1
 - **Bot:** `@IndoorWatch_IoT_bot`
 
 ---
@@ -40,7 +44,7 @@ celular mediante un **módulo Bluetooth serial** (HC-05 / HC-06 / HM-10).
 | :---: | --- | :---: |
 | **1** | DHT22 + MQ-2/MQ-135 + flama IR, Wi-Fi, comandos y alertas Telegram | ✅ Implementada |
 | **2** | Telemetría MQTT cada 10 s + dashboard (Ubidots / Blynk / ThingSpeak) | ⏳ Pendiente |
-| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC, Bluetooth serial y evasión reactiva | 🟡 Motores y Bluetooth serial implementados; percepción y evasión pendientes |
+| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC, mando GameSir + Bluetooth serial de respaldo y evasión reactiva | 🟡 Motores, mando y Bluetooth serial implementados; percepción y evasión pendientes |
 
 ### Etapa 2 — tópicos MQTT previstos
 
@@ -59,29 +63,30 @@ Publicación cada **10 segundos**:
 - Distancia **< 20 cm** → detener, retroceder, girar y reanudar la marcha.
 - Batería **< 20 %** → alerta por Telegram.
 - Control de tracción diferencial con L298N (dirección; PWM opcional).
-- Control manual desde el celular por Bluetooth serial.
-- Paro automático si no llega una nueva orden de movimiento en **5 s**.
+- Control manual principal con el mando GameSir por Bluetooth Classic.
+- Control de respaldo desde el celular por Bluetooth serial.
+- Paro automático del mando si deja de enviar datos durante **500 ms**.
+- Paro automático del control serial si no llega una nueva orden en **5 s**.
 
 ---
 
 ## 3. Arquitectura del firmware
 
 ```text
-   Celular ──Bluetooth──► HC-05/06/HM-10 ──UART──► ESP32 GPIO16/17
-                                                      │
+   GameSir ──BT Classic──► ESP32 (Bluepad32) ──► control_bt.cpp ──┐
+                                                                  ▼
+   Celular ──BT──► HC-05/06/HM-10 ──UART──► GPIO16/17 ──► comandos.cpp ──► motores.cpp ──► L298N
+                                                                              ▲
+   DHT22  ───────► GPIO 13 ┐                                                  │
+   MQ-2   ───────► GPIO 34 ├──► sensores.cpp ──► alertas.cpp ──► telegram_bot.cpp
+   Flama  ───────► GPIO 35 ┘                          │
                                                       ▼
-                                                comandos.cpp
-                                                      │
-                                                      ▼
-   DHT22  ───────► GPIO 13 ┐                    motores.cpp ──► L298N ──► motores
-   MQ-2   ───────► GPIO 34 ├──► sensores.cpp ──┐
-   Flama  ───────► GPIO 35 ┘                    │
-                                                ▼
-                                         alertas.cpp
-                                                │
-                                                ▼
-   Wi-Fi ◄── wifi_manager.cpp ◄──────── telegram_bot.cpp
+                                              Wi-Fi / Telegram
 ```
+
+> El mando tiene prioridad: mientras `controlBtConectado()` sea verdadero, el
+> firmware no procesa los comandos del módulo HC-05. Al desconectar el mando,
+> el respaldo serial vuelve a estar disponible.
 
 ### Módulos
 
@@ -94,8 +99,9 @@ Publicación cada **10 segundos**:
 | `telegram_bot.*` | Polling, comandos, respuestas y envío de mensajes |
 | `alertas.*` | Evaluación de umbrales, cooldown y normalización |
 | `motores.*` | Control no bloqueante del L298N, movimientos temporizados, control continuo y demo |
-| `comandos.*` | Procesamiento compartido de comandos USB y Bluetooth serial |
-| `bluetooth_serial.*` | Puente UART con el módulo HC-05/06/HM-10 |
+| `control_bt.*` | Emparejamiento y lectura del GameSir Nova Lite con Bluepad32 |
+| `comandos.*` | Procesamiento compartido de comandos USB y Bluetooth serial de respaldo |
+| `bluetooth_serial.*` | Puente UART con el módulo HC-05/06/HM-10 (respaldo) |
 | `secrets.h` | Credenciales reales (**ignorado por Git**) |
 | `secrets.example.h` | Plantilla de credenciales |
 
@@ -104,8 +110,8 @@ Publicación cada **10 segundos**:
 Toda temporización se realiza con `millis()`. **No se usan `delay()` largos**.
 Solo se usa `delay(1)` al final del `loop()` para ceder tiempo al Wi-Fi y evitar
 el watchdog. Esto es indispensable para la Etapa 3: el lazo principal debe
-seguir atendiendo el Bluetooth serial, el ultrasonido y los motores aunque se
-esté esperando el siguiente muestreo.
+seguir atendiendo el mando, el Bluetooth serial de respaldo, el ultrasonido y
+los motores aunque se esté esperando el siguiente muestreo.
 
 > Nota técnica: las librerías `DHT` y `UniversalTelegramBot` realizan esperas
 > internas breves (lectura del sensor y handshake TLS). Se aceptan en la Etapa 1
@@ -155,6 +161,8 @@ Criterios del mapa de pines:
 - El ECHO del HC-SR04 entrega 5 V: es **obligatorio** el divisor 1 kΩ / 2 kΩ
   antes de GPIO 33.
 - Alimentación de motores **independiente** de la ESP32, con **GND común**.
+- El mando GameSir **no ocupa GPIO**: usa el Bluetooth Classic interno de la
+  ESP32 mediante Bluepad32. El HC-05 es solo el respaldo por UART.
 
 ---
 
@@ -243,7 +251,7 @@ Batería (−) ─────────────┴── GND
 - Si todavía no vas a usar la lectura de batería, puedes dejar este divisor
   desconectado; no afecta el movimiento.
 
-### 5.4 Módulo Bluetooth serial
+### 5.4 Módulo Bluetooth serial (respaldo)
 
 | Módulo HC-05 / HC-06 / HM-10 | ESP32 | Notas |
 | --- | :---: | --- |
@@ -296,10 +304,56 @@ HC-05/06/HM-10 VCC ─────────── 5 V (o 3.3 V según el mód
 1. Coloca el rover **sobre bloques** para que las ruedas giren sin desplazarse.
 2. Verifica que los jumpers **ENA** y **ENB** estén puestos.
 3. Conecta la alimentación del L298N y une el GND con la ESP32.
-4. Empareja el celular con el módulo Bluetooth (ver sección 6.2).
+4. Empareja el **mando GameSir** (sección 6.2) o, si no tienes mando, el celular
+   por Bluetooth serial (sección 6.3).
 5. Abre el Monitor Serial USB a **115200** baudios.
 
-### 6.2 Emparejar el celular
+### 6.2 Emparejar el mando GameSir (control principal)
+
+El GameSir Nova Lite usa **Bluetooth Classic**. La ESP32 actúa como **host** con
+Bluepad32, por eso **no** aparece como un dispositivo Bluetooth normal en el
+celular. El mando debe estar en modo de emparejamiento.
+
+1. **Apaga el mando por completo** (mantén `Home` unos 5 s si está encendido).
+2. Apaga el Bluetooth del teléfono/PC y **olvida el mando** en ese dispositivo;
+   si no, el mando puede reconectarse allí y no entrar en emparejamiento.
+3. Enciende el mando manteniendo la combinación hasta que el LED parpadee
+   **rápido**, no solo lento:
+   - **Android:** `A + Home` → parpadeo **amarillo**.
+   - **Switch:** `Y + Home` → parpadeo **rojo**.
+   - Si el LED está **verde**, el mando está en modo receptor 2.4 GHz, no en
+     Bluetooth; apágalo y repite con `A + Home` o `Y + Home`.
+4. Si no entra en emparejamiento, mantén `Screenshot + Home` durante 3 s.
+5. Acércalo a la ESP32 (unos 20–30 cm) y observa el Monitor Serial; debe
+   aparecer:
+
+```text
+[BT] Mando conectado: GameSir Nova Lite ...
+[BT] VID=0x.... PID=0x.... tipo=... flags=0x....
+```
+
+El mando solo funciona si el sketch se compila con la placa **ESP32 +
+Bluepad32** y la partición **Huge APP**. Con el core estándar `esp32:esp32` el
+proyecto compila, pero el control por mando queda deshabilitado y aparece
+`[BT] Bluepad32 no instalado`.
+
+Controles:
+
+| Control | Acción |
+| --- | --- |
+| Stick izquierdo arriba / abajo | Avanzar / retroceder |
+| Stick derecho izquierda / derecha | Girar a la izquierda / derecha |
+| Botón **A** | Paro inmediato |
+| Sin datos del mando durante 500 ms | Paro automático |
+| Mando desconectado | Paro automático |
+
+> El mando tiene **prioridad** sobre el módulo HC-05. Mientras esté conectado,
+> el firmware ignora los comandos del celular. Al apagarlo o desconectarlo,
+> vuelve a funcionar el respaldo serial.
+
+### 6.3 Emparejar el celular (respaldo)
+
+Usa este modo **solo cuando el mando esté desconectado**.
 
 Para **HC-05 / HC-06**:
 
@@ -320,10 +374,11 @@ Para **HM-10 (BLE)**:
 > **iPhone:** el protocolo clásico SPP de HC-05/HC-06 no está disponible. Usa un
 > Android o un módulo BLE HM-10 con una app BLE.
 
-### 6.3 Comandos por USB o Bluetooth
+### 6.4 Comandos por USB o Bluetooth serial
 
 Envía **una sola letra** por la app o por el Monitor Serial. La app puede agregar
-Enter; el firmware lo ignora.
+Enter; el firmware lo ignora. El **USB siempre está disponible**; el Bluetooth
+serial solo procesa comandos cuando el **mando está desconectado**.
 
 | Tecla | Acción |
 | :---: | --- |
@@ -333,7 +388,10 @@ Enter; el firmware lo ignora.
 | `d` | Girar a la derecha (continuo) |
 | `s` | Detener inmediatamente |
 | `p` | Demo: adelante, atrás, izquierda, derecha |
-| `m` | Mostrar el estado de los motores |
+| `m` | Estado de motores y del mando |
+| `b` | Olvidar las claves Bluetooth del mando |
+| `e` | Reiniciar la búsqueda del mando |
+| `x` | Activar/desactivar debug de ejes del mando |
 | `h` o `?` | Ayuda |
 
 - `a/r/i/d` mantienen el movimiento hasta que envíes `s` **o** hasta que pasen
@@ -341,26 +399,32 @@ Enter; el firmware lo ignora.
 - Para recorrer una distancia mayor, envía `a` de nuevo antes de que se cumplan
   los 5 s.
 - `s` es el **paro de emergencia**.
-- Si el enlace Bluetooth se corta, el rover se detiene al vencer los 5 s.
+- Si el enlace Bluetooth serial se corta, el rover se detiene al vencer los 5 s.
 - También se aceptan palabras completas: `adelante`, `atras`, `izquierda`,
   `derecha`, `detener`, `demo`, `estado`, `ayuda`.
 - Puedes enviar la letra con o sin Enter. Si la app no agrega Enter, el firmware
   la procesa tras un silencio muy breve.
 
-### 6.4 Comandos por Telegram
+### 6.5 Comandos por Telegram
 
-Los comandos de Telegram son independientes del Bluetooth y duran **1.5 s**:
+Los comandos de Telegram duran **1.5 s** y son independientes del Bluetooth
+serial:
 
 - `/demo` — secuencia completa.
 - `/adelante`, `/atras`, `/izquierda`, `/derecha`.
 - `/detener` — paro inmediato.
+- `/mando` — estado del GameSir.
+- `/bluetooth` — instrucciones del respaldo serial.
 
-### 6.5 Si un motor no se mueve
+> Si el mando está conectado y moviendo el rover, sus órdenes tienen prioridad
+> sobre Telegram y sobre el HC-05.
+
+### 6.6 Si un motor no se mueve
 
 1. Revisa que el jumper `ENA` o `ENB` correspondiente esté puesto.
 2. Verifica el GND común entre batería, L298N y ESP32.
 3. Comprueba que la batería tenga carga y que el interruptor esté encendido.
-4. Prueba `/demo` desde Telegram o `p` por USB.
+4. Prueba `/demo` desde Telegram, `p` por USB o mueve el stick del mando.
 5. Si solo gira un motor, revisa los cables `OUT1/OUT2` u `OUT3/OUT4` y las
    señales `IN1–IN4`.
 6. Si gira al revés, invierte los dos cables de ese motor o cambia la bandera
@@ -401,7 +465,7 @@ valor crudo de la última muestra se incluye en el Monitor Serial.
 | Comando | Acción |
 | --- | --- |
 | `/start` | Bienvenida y ayuda |
-| `/estado` | Lecturas actuales, estado de motores, Bluetooth, Wi-Fi y uptime |
+| `/estado` | Lecturas actuales, estado de motores, mando, Bluetooth serial, Wi-Fi y uptime |
 | `/sensores` | Alias de `/estado` |
 | `/umbrales` | Límites de alerta configurados |
 | `/ping` | Uptime, RSSI, IP y memoria libre |
@@ -412,12 +476,14 @@ valor crudo de la última muestra se incluye en el Monitor Serial.
 | `/izquierda` | Girar a la izquierda durante 1.5 s |
 | `/derecha` | Girar a la derecha durante 1.5 s |
 | `/detener` | Parar los motores inmediatamente |
-| `/bluetooth` | Instrucciones para conectar el celular por Bluetooth serial |
+| `/mando` | Estado del mando GameSir |
+| `/bluetooth` | Instrucciones del respaldo por Bluetooth serial |
 | `/id` | Chat ID autorizado |
 | `/ayuda` | Lista de comandos |
 
 Solo se atienden mensajes del `CHAT_ID` configurado. Cualquier otro chat se
-ignora y se registra en el Monitor Serial.
+ignora y se registra en el Monitor Serial. El mando tiene prioridad sobre los
+comandos de Telegram cuando está conectado y moviendo el rover.
 
 ### Comportamiento de las alertas
 
@@ -446,8 +512,9 @@ rbtmvll/
 ├── telegram_bot.h / .cpp   # Bot, comandos y respuestas
 ├── alertas.h / .cpp        # Umbrales, cooldown y normalización
 ├── motores.h / .cpp        # L298N, movimientos, control continuo y demo
-├── comandos.h / .cpp       # Comandos compartidos USB / Bluetooth
-├── bluetooth_serial.h/.cpp # Puente UART con HC-05/06/HM-10
+├── control_bt.h / .cpp     # GameSir Nova Lite con Bluepad32
+├── comandos.h / .cpp       # Comandos compartidos USB / Bluetooth serial
+├── bluetooth_serial.h/.cpp # Puente UART con HC-05/06/HM-10 (respaldo)
 ├── secrets.example.h       # Plantilla de credenciales (sí se versiona)
 ├── secrets.h               # Credenciales reales (IGNORADO por Git)
 ├── .gitignore
@@ -464,15 +531,31 @@ rbtmvll/
 ### 10.1 Requisitos de software
 
 - Arduino IDE 2.x.
-- Núcleo **ESP32 by Espressif Systems** (`3.3.12` o superior).
+- Para el **mando GameSir**: paquete **ESP32 + Bluepad32 4.1.0**.
+- Para el **respaldo sin mando**: núcleo **ESP32 by Espressif Systems**
+  (`3.3.12` o superior).
 - Bibliotecas (Library Manager):
   - **DHT sensor library** de Adafruit (`1.4.7` o superior).
   - **Adafruit Unified Sensor** (dependencia de la anterior).
   - **UniversalTelegramBot** de Brian Lough (`1.3.0` o superior).
   - **ArduinoJson** (`7.x`).
 
-> Ya **no** se necesita instalar el paquete **ESP32 + Bluepad32**. El proyecto
-> usa el core estándar de ESP32 y un módulo Bluetooth externo.
+#### Instalar ESP32 + Bluepad32
+
+1. En Arduino IDE: **Archivo → Preferencias → Gestor de placas adicionales**.
+2. Agregar esta URL:
+
+```text
+https://raw.githubusercontent.com/ricardoquesada/esp32-arduino-lib-builder/master/bluepad32_files/package_esp32_bluepad32_index.json
+```
+
+3. Abrir **Herramientas → Placa → Gestor de placas**, buscar
+   **ESP32 + Bluepad32** e instalar la versión **4.1.0**.
+4. Seleccionar la placa **ESP32 Dev Module** dentro del paquete
+   **ESP32 + Bluepad32**.
+5. En **Herramientas → Partition Scheme**, elegir
+   **Huge APP (3MB No OTA/1MB SPIFFS)**. La partición por defecto de 1.2 MB no
+   alcanza para Bluepad32 + Wi-Fi + Telegram.
 
 ### 10.2 Configurar credenciales
 
@@ -490,21 +573,45 @@ git check-ignore -v secrets.h
 
 ### 10.3 Compilar y cargar
 
+#### Opción A — con mando GameSir (recomendada)
+
 Desde Arduino IDE:
 
 1. Abrir `rbtmvll.ino`.
-2. Seleccionar la placa **ESP32 Dev Module** del paquete **ESP32 by Espressif
-   Systems**.
-3. Esquema de partición: **Default** (no se necesita Huge APP).
+2. Seleccionar la placa **ESP32 Dev Module** del paquete **ESP32 + Bluepad32**.
+3. Esquema de partición: **Huge APP (3MB No OTA/1MB SPIFFS)**.
 4. **Verificar** y luego **Subir**.
 5. Abrir el Monitor Serial a **115200 baudios**.
 
 Desde Arduino CLI:
 
 ```bash
+arduino-cli compile --fqbn esp32-bluepad32:esp32:esp32 \
+  --board-options PartitionScheme=huge_app .
+arduino-cli upload -p COM9 --fqbn esp32-bluepad32:esp32:esp32 \
+  --board-options PartitionScheme=huge_app .
+```
+
+Tamaño con Bluepad32: **1,303,861 bytes (41 % de Huge APP)** y **107,436 bytes
+de RAM (32 %)**.
+
+#### Opción B — solo respaldo por HC-05, sin mando
+
+Si todavía no vas a usar el mando, puedes compilar con el core estándar. El
+control por mando queda deshabilitado y aparece `[BT] Bluepad32 no instalado`.
+
+1. Seleccionar la placa **ESP32 Dev Module** del paquete **ESP32 by Espressif
+   Systems**.
+2. Esquema de partición: **Default**.
+3. Verificar y subir.
+
+```bash
 arduino-cli compile --fqbn esp32:esp32:esp32 .
 arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
 ```
+
+Tamaño sin Bluepad32: **1,035,484 bytes (79 % de la partición por defecto)** y
+**48,184 bytes de RAM (14 %)**.
 
 > Si el puerto está ocupado, cierra el Monitor Serial de Arduino IDE antes de
 > subir. El puerto detectado en este equipo es **COM9**; cámbialo si aparece
@@ -515,11 +622,16 @@ arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
 ```text
 ==============================================
  IndoorWatch - Rover IoT de monitoreo
- Etapa 1 + motores L298N + Bluetooth serial
+ Etapa 1 + motores L298N + mando Bluetooth
 ==============================================
 [SENSORES] DHT22=GPIO13, MQ=GPIO34, FLAMA=GPIO35
 [MOTORES] L298N listo: IN1=18 IN2=19 IN3=22 IN4=23. ENA/ENB con jumpers (velocidad fija).
 [MOTORES] USB/Bluetooth: a=adelante r=atras i=izquierda d=derecha s=detener p=demo
+[BT] Bluepad32 for Arduino v4.1.0
+[BT] Direccion local: XX:XX:XX:XX:XX:XX
+[BT] Esperando mando GameSir Nova Lite...
+[BT] Apagado, manten A+Home (Android, amarillo) o Y+Home (Switch, rojo) hasta parpadeo rapido.
+[BT] Serial: m=estado b=olvidar claves e=rebuscar x=debug
 [BT] Modulo serial listo: RX=GPIO16 TX=GPIO17 @ 9600 baudios.
 [BT] Empareja el celular y envia a/r/i/d/s/p.
 [BT] Ayuda: h | estado: m
@@ -528,7 +640,12 @@ arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm
 [TELEGRAM] Aviso de inicio enviado correctamente.
 [SENSOR] T=25.4 C | H=58.7 % | GAS=1987 (crudo=2003) | FLAMA=NO
+[BT] Mando conectado: GameSir Nova Lite (indice 0)
+[BT] VID=0x.... PID=0x.... tipo=... flags=0x....
 ```
+
+> Con el core estándar (sin Bluepad32) en lugar de las líneas del mando aparece
+> `[BT] Bluepad32 no instalado.` y el HC-05 sigue funcionando como respaldo.
 
 ---
 
@@ -548,7 +665,14 @@ arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
 - [ ] Al desconectar el router, la ESP32 reintenta y se recupera al volver.
 - [ ] Con el rover sobre bloques, `/demo` mueve ambos motores en ambos sentidos.
 - [ ] `/detener` detiene los motores inmediatamente.
-- [ ] Los comandos `a`, `r`, `i`, `d`, `s`, `p`, `m` y `h` funcionan por USB.
+- [ ] Los comandos `a`, `r`, `i`, `d`, `s`, `p`, `m`, `b`, `e`, `x` y `h`
+      funcionan por USB.
+- [ ] El mando GameSir aparece en el Monitor Serial como conectado.
+- [ ] El stick izquierdo mueve adelante/atrás y el derecho gira.
+- [ ] El botón **A** detiene los motores.
+- [ ] Al apagar el mando, el rover se detiene solo.
+- [ ] Al conectar el mando, el HC-05 deja de responder (prioridad del mando).
+- [ ] Al desconectar el mando, el HC-05 vuelve a funcionar.
 - [ ] El módulo Bluetooth aparece en el celular y se empareja.
 - [ ] Al enviar `a` desde la app, ambos motores avanzan.
 - [ ] Al enviar `s`, los motores se detienen.
@@ -584,15 +708,26 @@ arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
   `a/r/i/d` pueden moverlo.
 - Los jumpers ENA/ENB deben estar puestos si no se usa PWM; de lo contrario los
   motores no recibirán habilitación.
-- Mantener una mano cerca del interruptor de alimentación. `s` es el paro de
-  emergencia por Bluetooth; `/detener` es el paro por Telegram.
-- El control continuo se detiene automáticamente a los **5 s** sin una nueva
-  orden. Si se pierde el enlace Bluetooth, el rover no sigue indefinidamente.
+- Mantener una mano cerca del interruptor de alimentación. El botón **A** del
+  mando es el paro de emergencia principal; `s` es el paro por Bluetooth serial
+  y `/detener` el paro por Telegram.
+- El mando se detiene automáticamente si deja de enviar datos durante **500 ms**
+  o si se desconecta. El control serial se detiene a los **5 s** sin una nueva
+  orden.
+- El mando tiene prioridad: si está conectado, el HC-05 no procesa comandos. Al
+  desconectarlo, el respaldo serial vuelve a funcionar.
 - El módulo HC-05/06 usa un PIN de emparejamiento débil (1234/0000). No usar el
   rover en un entorno público sin cambiar el PIN o añadir autenticación.
-- **HC-05/06/HM-10 no pueden actuar como host HID del mando GameSir.** Si en el
-  futuro se quiere volver a usar el mando directo, habría que recuperar
-  Bluepad32 o usar un host USB; no es el alcance actual.
+- **HC-05/06/HM-10 no pueden actuar como host HID del mando GameSir.** El mando
+  se conecta directo a la ESP32 con Bluepad32; el HC-05 es solo respaldo para el
+  celular.
+- El GameSir debe estar en modo **Bluetooth** (LED amarillo o rojo parpadeando
+  rápido), no en modo 2.4 GHz (LED verde).
+- Wi-Fi y Bluetooth comparten radio. Si el control del mando se siente lento,
+  reduce temporalmente el polling de Telegram o desactiva el Wi-Fi durante la
+  prueba.
+- Con Bluepad32 usa siempre la partición **Huge APP**. La partición por defecto
+  no alcanza para el firmware completo.
 
 ---
 
@@ -613,18 +748,21 @@ git push origin main
 
 ## 14. Próximos pasos
 
-1. Validar en hardware los motores y el módulo Bluetooth con el rover sobre
-   bloques; ajustar los sentidos de giro.
-2. Confirmar la alimentación definitiva: batería → L298N, 5 V para la ESP32 y
+1. Validar en hardware el **mando GameSir** y los motores con el rover sobre
+   bloques; ajustar los sentidos de giro y confirmar el paro con **A**, el
+   timeout de 500 ms y la desconexión.
+2. Medir la latencia y estabilidad de **Wi-Fi + Bluetooth**; si es necesario,
+   reducir el polling de Telegram mientras se usa el mando.
+3. Confirmar la alimentación definitiva: batería → L298N, 5 V para la ESP32 y
    GND común; medir tensiones antes de conectar los sensores.
-3. Integrar el HC-SR04 y el divisor de batería; validar el ECHO con su divisor.
-4. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
+4. Integrar el HC-SR04 y el divisor de batería; validar el ECHO con su divisor.
+5. Implementar la máquina de estados de evasión: `AVANZAR → DETENER →
    RETROCEDER → GIRAR → AVANZAR`.
-5. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
+6. Agregar el módulo MQTT (Etapa 2) manteniendo la arquitectura no bloqueante:
    publicación cada 10 s a `rover/temp`, `rover/hum`, `rover/gas`,
    `rover/flama` y `rover/bateria`.
-6. Añadir PWM en ENA/ENB para velocidad proporcional y control más fino.
-7. Añadir pruebas de integración y registro de datos para el dashboard.
+7. Añadir PWM en ENA/ENB para velocidad proporcional y control más fino.
+8. Añadir pruebas de integración y registro de datos para el dashboard.
 
 ---
 
