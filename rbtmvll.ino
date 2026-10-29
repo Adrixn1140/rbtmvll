@@ -6,6 +6,7 @@
 #include "telegram_bot.h"
 #include "alertas.h"
 #include "motores.h"
+#include "control_bt.h"
 #include "comandos.h"
 #include "bluetooth_serial.h"
 
@@ -37,11 +38,12 @@ void setup() {
   Serial.println();
   Serial.println(F("=============================================="));
   Serial.println(F(" IndoorWatch - Rover IoT de monitoreo"));
-  Serial.println(F(" Etapa 1 + motores L298N + Bluetooth serial"));
+  Serial.println(F(" Etapa 1 + motores L298N + mando Bluetooth"));
   Serial.println(F("=============================================="));
 
   sensoresInit();
   motoresInit();
+  controlBtInit();
   bluetoothSerialInit();
   wifiInit();
   telegramInit();
@@ -52,8 +54,13 @@ void setup() {
 }
 
 void loop() {
-  // Bluetooth serial y motores primero: el control no espera a la red.
-  bluetoothSerialTick();
+  // El mando tiene prioridad. El módulo serial solo atiende si no hay mando.
+  controlBtTick();
+  if (controlBtConectado()) {
+    bluetoothSerialDescartar();
+  } else {
+    bluetoothSerialTick();
+  }
   motoresTick();
   comandosProcesar(Serial, "USB");
 

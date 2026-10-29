@@ -5,6 +5,7 @@
 
 void bluetoothSerialInit();
 void bluetoothSerialTick();
+void bluetoothSerialDescartar();
 const char* bluetoothSerialEstado();
 
 #endif

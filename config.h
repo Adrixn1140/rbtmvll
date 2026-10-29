@@ -77,4 +77,17 @@ constexpr uint8_t PIN_BT_RX = 16;
 constexpr uint8_t PIN_BT_TX = 17;
 constexpr unsigned long BT_BAUDIOS = 9600UL;
 
+// ------------------------------------------------------------------
+// Mando Bluetooth directo (GameSir + Bluepad32)
+// ------------------------------------------------------------------
+// Zona muerta de los ejes: evita que un stick suelto mueva el rover.
+constexpr int MANDO_ZONA_MUERTA = 80;
+
+// Si el mando deja de enviar datos mientras controla, se detienen los motores.
+constexpr unsigned long MANDO_TIMEOUT_MS = 500UL;
+
+// Cambia estas banderas si el rover avanza/gira al revés con el mando.
+constexpr bool MANDO_EJE_Y_INVERTIDO = false;
+constexpr bool MANDO_EJE_X_INVERTIDO = false;
+
 #endif

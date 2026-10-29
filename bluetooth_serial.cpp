@@ -33,6 +33,15 @@ void bluetoothSerialTick() {
   comandosProcesar(Serial2, "BT", true);
 }
 
+void bluetoothSerialDescartar() {
+  // Mientras el mando tiene el control, se tira lo que llegue por el HC-05
+  // para que no se ejecute una orden vieja al desconectar el mando.
+  comandosReset(Serial2);
+  while (Serial2.available() > 0) {
+    Serial2.read();
+  }
+}
+
 const char* bluetoothSerialEstado() {
   static char estado[80];
   snprintf(estado, sizeof(estado),

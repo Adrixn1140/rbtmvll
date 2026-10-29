@@ -134,6 +134,11 @@ void motoresMover(DireccionMovimiento direccion, unsigned long duracionMs) {
 }
 
 void motoresControlContinuo(DireccionMovimiento direccion) {
+  if (direccion == DireccionMovimiento::DETENIDO) {
+    motoresDetener();
+    return;
+  }
+
   demoActiva = false;
   movimientoTemporalActivo = false;
   controlContinuoActivo = true;

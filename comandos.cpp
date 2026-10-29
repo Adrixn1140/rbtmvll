@@ -3,6 +3,7 @@
 #include <ctype.h>
 
 #include "config.h"
+#include "control_bt.h"
 #include "motores.h"
 
 namespace {
@@ -46,6 +47,8 @@ void imprimirLinea(Stream& salida, bool eco,
 void imprimirEstado(Stream& salida, bool eco) {
   String estado = F("Estado motores: ");
   estado += motoresEstadoTexto();
+  estado += F(" | Mando: ");
+  estado += controlBtConectado() ? controlBtNombre() : "desconectado";
   Serial.println(estado);
   if (eco) {
     salida.println(estado);
@@ -56,6 +59,8 @@ void imprimirAyuda(Stream& salida, bool eco) {
   imprimirLinea(salida, eco,
                 F("Comandos: a=adelante r=atras i=izquierda d=derecha"));
   imprimirLinea(salida, eco, F("s=detener p=demo m=estado h=ayuda"));
+  imprimirLinea(salida, eco,
+                F("Mando: b=olvidar claves e=rebuscar x=debug"));
   imprimirLinea(salida, eco,
                 F("a/r/i/d siguen hasta s o hasta 5 s sin una nueva orden."));
 }
@@ -108,6 +113,24 @@ void ejecutarComando(const String& token, Stream& entrada, bool eco) {
         return;
       case 'm':
         imprimirEstado(entrada, eco);
+        return;
+      case 'b':
+        controlBtOlvidarClaves();
+        if (eco) {
+          entrada.println(F("OK: claves del mando olvidadas"));
+        }
+        return;
+      case 'e':
+        controlBtReiniciarBusqueda();
+        if (eco) {
+          entrada.println(F("OK: busqueda del mando reiniciada"));
+        }
+        return;
+      case 'x':
+        controlBtAlternarDebug();
+        if (eco) {
+          entrada.println(F("OK: debug del mando alternado"));
+        }
         return;
       case 'h':
       case '?':
@@ -222,4 +245,12 @@ void comandosProcesar(Stream& entrada, const char* origen, bool eco) {
       (millis() - parser.ultimoCharMs >= 60UL)) {
     procesarBuffer(parser, entrada, eco, origen);
   }
+}
+
+void comandosReset(Stream& entrada) {
+  ParserEstado& parser = obtenerParser(entrada);
+  parser.longitud = 0;
+  parser.buffer[0] = '\0';
+  parser.descartar = false;
+  parser.ultimoCharMs = 0;
 }
