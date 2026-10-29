@@ -27,9 +27,20 @@ bool mandoConectado = false;
 String nombreMando;
 unsigned long ultimaActividadMandoMs = 0;
 bool timeoutAplicado = false;
+bool debugMando = false;
+unsigned long ultimoDebugMandoMs = 0;
 
 bool mandoSigueConectado(ControllerPtr ctl) {
   return ctl != nullptr && ctl->isConnected();
+}
+
+ControllerPtr primerMandoConectado() {
+  for (uint8_t i = 0; i < BP32_MAX_GAMEPADS; ++i) {
+    if (mandos[i] != nullptr && mandos[i]->isConnected()) {
+      return mandos[i];
+    }
+  }
+  return nullptr;
 }
 
 void onConnectedController(ControllerPtr ctl) {
@@ -62,9 +73,9 @@ void onDisconnectedController(ControllerPtr ctl) {
     }
   }
 
-  mandoActivo = nullptr;
-  mandoConectado = false;
-  nombreMando = "";
+  mandoActivo = primerMandoConectado();
+  mandoConectado = (mandoActivo != nullptr);
+  nombreMando = mandoConectado ? mandoActivo->getModelName() : "";
   timeoutAplicado = false;
 
   // Si se cae el enlace, el rover no debe seguir con la ultima orden.
@@ -130,6 +141,8 @@ void controlBtInit() {
 
   Serial.println(F("[BT] Esperando mando GameSir Nova Lite..."));
   Serial.println(F("[BT] Pon el mando en modo Android (Home + A) o Switch."));
+  Serial.println(
+      F("[BT] Serial: m=estado b=olvidar claves x=debug de ejes"));
 }
 
 void controlBtTick() {
@@ -156,6 +169,49 @@ void controlBtTick() {
   if (mandoActivo != nullptr && !mandoSigueConectado(mandoActivo)) {
     mandoActivo = nullptr;
   }
+
+  if (debugMando && (millis() - ultimoDebugMandoMs >= 250UL)) {
+    ultimoDebugMandoMs = millis();
+    ControllerPtr ctl = primerMandoConectado();
+    if (ctl != nullptr) {
+      Serial.printf(
+          "[BT][DBG] L=(%d,%d) R=(%d,%d) botones=0x%04X dpad=0x%02X dir=%s\n",
+          static_cast<int>(ctl->axisX()), static_cast<int>(ctl->axisY()),
+          static_cast<int>(ctl->axisRX()), static_cast<int>(ctl->axisRY()),
+          static_cast<unsigned>(ctl->buttons()),
+          static_cast<unsigned>(ctl->dpad()), motoresEstadoTexto());
+    } else {
+      Serial.println(F("[BT][DBG] Sin mando conectado."));
+    }
+  }
+}
+
+void controlBtImprimirEstado() {
+  ControllerPtr ctl = primerMandoConectado();
+  if (ctl == nullptr) {
+    Serial.println(F("[BT] Sin mando conectado."));
+    return;
+  }
+
+  const unsigned long edadDatos = millis() - ultimaActividadMandoMs;
+  Serial.printf("[BT] Mando: %s | ultimo dato hace %lu ms | dir=%s\n",
+                ctl->getModelName().c_str(), edadDatos, motoresEstadoTexto());
+}
+
+void controlBtOlvidarClaves() {
+  BP32.forgetBluetoothKeys();
+  BP32.enableNewBluetoothConnections(true);
+  timeoutAplicado = false;
+  Serial.println(
+      F("[BT] Claves Bluetooth olvidadas. Reinicia el mando y ponlo en "
+        "modo emparejamiento."));
+}
+
+void controlBtAlternarDebug() {
+  debugMando = !debugMando;
+  ultimoDebugMandoMs = millis();
+  Serial.printf("[BT] Debug de ejes %s.\n",
+                debugMando ? "activado" : "desactivado");
 }
 
 bool controlBtConectado() {
@@ -175,6 +231,18 @@ void controlBtInit() {
 }
 
 void controlBtTick() {}
+
+void controlBtImprimirEstado() {
+  Serial.println(F("[BT] Bluepad32 no instalado."));
+}
+
+void controlBtOlvidarClaves() {
+  Serial.println(F("[BT] Bluepad32 no instalado."));
+}
+
+void controlBtAlternarDebug() {
+  Serial.println(F("[BT] Bluepad32 no instalado."));
+}
 
 bool controlBtConectado() {
   return false;

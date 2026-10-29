@@ -222,6 +222,24 @@ El mando solo funciona si el sketch se compila con la placa **ESP32 +
 Bluepad32**. Con el core estándar `esp32:esp32` el proyecto compila, pero el
 control Bluetooth queda deshabilitado y aparece un aviso en el Monitor Serial.
 
+### Diagnóstico por Monitor Serial
+
+Con el firmware cargado, escribe estas letras en el Monitor Serial:
+
+| Tecla | Acción |
+| :---: | --- |
+| `m` | Muestra si el mando está conectado, su nombre y la edad del último dato |
+| `b` | Olvida las claves Bluetooth guardadas por la ESP32 |
+| `x` | Activa/desactiva la impresión de ejes, botones, D-pad y dirección |
+
+Si el mando no aparece:
+
+1. Envía `b` para borrar las claves guardadas.
+2. Apaga y vuelve a encender el mando en modo Android o Switch.
+3. Fuerza el emparejamiento con `Screenshot + Home`.
+4. Envía `m` para confirmar la conexión.
+5. Envía `x` y mueve los sticks para ver los valores reales de los ejes.
+
 > ⚠️ El GameSir Nova Lite usa **Bluetooth Classic (BR/EDR)**. La ESP32 debe ser
 > una **ESP32 clásica** (WROOM/WROVER). Las ESP32-S3, C3 y C6 no sirven para este
 > mando. Un HC-05/06/HM-10 tampoco puede actuar como host HID del mando.
@@ -411,6 +429,7 @@ arduino-cli upload -p COM7 --fqbn esp32-bluepad32:esp32:esp32 \
 [BT] Direccion local: XX:XX:XX:XX:XX:XX
 [BT] Esperando mando GameSir Nova Lite...
 [BT] Pon el mando en modo Android (Home + A) o Switch.
+[BT] Serial: m=estado b=olvidar claves x=debug de ejes
 [WIFI] Conectando a la red: MiRed
 [SISTEMA] Listo. Monitor Serial a 115200 baudios.
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm
@@ -439,6 +458,8 @@ arduino-cli upload -p COM7 --fqbn esp32-bluepad32:esp32:esp32 \
 - [ ] `/detener` detiene los motores inmediatamente.
 - [ ] Los comandos `a`, `r`, `i`, `d`, `s` y `p` funcionan por Monitor Serial.
 - [ ] El Monitor Serial muestra `[BT] Mando conectado` al encender el GameSir.
+- [ ] El comando `m` confirma el estado del mando.
+- [ ] El comando `x` muestra los ejes y botones en tiempo real.
 - [ ] El stick izquierdo mueve adelante/atrás y el derecho gira.
 - [ ] El botón **A** detiene los motores.
 - [ ] Al apagar el mando, el rover se detiene solo.

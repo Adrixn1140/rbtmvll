@@ -42,6 +42,18 @@ void procesarComandoSerial() {
       case 'P':
         motoresDemo();
         break;
+      case 'm':
+      case 'M':
+        controlBtImprimirEstado();
+        break;
+      case 'b':
+      case 'B':
+        controlBtOlvidarClaves();
+        break;
+      case 'x':
+      case 'X':
+        controlBtAlternarDebug();
+        break;
       default:
         break;
     }
