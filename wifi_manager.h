@@ -5,6 +5,9 @@
 
 void wifiInit();
 void wifiTick();          // Debe llamarse en cada iteración del loop()
+void wifiApagar();
+void wifiEncender();
+bool wifiHabilitado();
 bool wifiConectado();
 String wifiIp();
 int wifiRssi();

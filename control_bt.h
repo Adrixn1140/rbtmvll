@@ -5,11 +5,16 @@
 
 void controlBtInit();
 void controlBtTick();
+void controlBtActivar();
+void controlBtDesactivar();
+bool controlBtHabilitado();
 void controlBtImprimirEstado();
 void controlBtOlvidarClaves();
 void controlBtReiniciarBusqueda();
 void controlBtAlternarDebug();
 bool controlBtConectado();
 const char* controlBtNombre();
+bool controlBtConsumirSolicitudDatos();
+bool controlBtConsumirSolicitudAuto();
 
 #endif

@@ -5,24 +5,55 @@
 #include <WiFi.h>
 
 namespace {
+bool habilitado = false;
 bool conectadoPrevio = false;
 unsigned long ultimoIntentoMs = 0;
 }  // namespace
 
 void wifiInit() {
+  wifiEncender();
+}
+
+void wifiEncender() {
+  if (habilitado) {
+    return;
+  }
+
+  habilitado = true;
+  conectadoPrevio = false;
+
   WiFi.mode(WIFI_STA);
   WiFi.setHostname("IndoorWatch-Rover");
   WiFi.setAutoReconnect(true);
   WiFi.persistent(false);
 
-  Serial.print(F("[WIFI] Conectando a la red: "));
+  Serial.print(F("[WIFI] Encendiendo. Conectando a la red: "));
   Serial.println(WIFI_SSID);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   ultimoIntentoMs = millis();
 }
 
+void wifiApagar() {
+  if (!habilitado) {
+    return;
+  }
+
+  habilitado = false;
+  conectadoPrevio = false;
+
+  WiFi.disconnect(true, false);
+  WiFi.mode(WIFI_OFF);
+
+  Serial.println(
+      F("[WIFI] Apagado. La radio queda libre para el mando Bluetooth."));
+}
+
 void wifiTick() {
+  if (!habilitado) {
+    return;
+  }
+
   const unsigned long ahora = millis();
   const bool conectado = wifiConectado();
 
@@ -46,14 +77,24 @@ void wifiTick() {
   conectadoPrevio = conectado;
 }
 
+bool wifiHabilitado() {
+  return habilitado;
+}
+
 bool wifiConectado() {
-  return WiFi.status() == WL_CONNECTED;
+  return habilitado && WiFi.status() == WL_CONNECTED;
 }
 
 String wifiIp() {
+  if (!habilitado) {
+    return F("apagado");
+  }
   return WiFi.localIP().toString();
 }
 
 int wifiRssi() {
+  if (!habilitado) {
+    return 0;
+  }
   return static_cast<int>(WiFi.RSSI());
 }

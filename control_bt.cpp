@@ -23,6 +23,7 @@ namespace {
 ControllerPtr mandos[BP32_MAX_GAMEPADS];
 ControllerPtr mandoActivo = nullptr;
 
+bool habilitado = true;
 bool mandoConectado = false;
 String nombreMando;
 unsigned long ultimaActividadMandoMs = 0;
@@ -30,6 +31,11 @@ bool timeoutAplicado = false;
 bool mandoControlaMovimiento = false;
 bool debugMando = false;
 unsigned long ultimoDebugMandoMs = 0;
+
+bool solicitudDatos = false;
+bool solicitudAuto = false;
+bool bPrevio = false;
+bool yPrevio = false;
 
 // Bluepad32 4.1.0 solo ejecuta un comando "safe" por loop. Para olvidar
 // claves y volver a buscar el mando hay que hacerlo en dos pasos separados.
@@ -59,6 +65,10 @@ void onConnectedController(ControllerPtr ctl) {
       ultimaActividadMandoMs = millis();
       timeoutAplicado = false;
       mandoControlaMovimiento = false;
+      bPrevio = false;
+      yPrevio = false;
+      solicitudDatos = false;
+      solicitudAuto = false;
 
       const ControllerProperties propiedades = ctl->getProperties();
       Serial.printf("[BT] Mando conectado: %s (indice %u)\n",
@@ -95,6 +105,10 @@ void onDisconnectedController(ControllerPtr ctl) {
   nombreMando = mandoConectado ? mandoActivo->getModelName() : "";
   timeoutAplicado = false;
   mandoControlaMovimiento = false;
+  bPrevio = false;
+  yPrevio = false;
+  solicitudDatos = false;
+  solicitudAuto = false;
 
   // Si se cae el enlace, el rover no debe seguir con la ultima orden.
   motoresDetener();
@@ -133,6 +147,19 @@ void procesarMando(ControllerPtr ctl) {
   ultimaActividadMandoMs = millis();
   timeoutAplicado = false;
 
+  // B: mostrar datos en OLED/Serial. Y: volver a modo automático.
+  // Se detecta el flanco para que mantener el botón no repita la acción.
+  const bool bAhora = ctl->b();
+  const bool yAhora = ctl->y();
+  if (bAhora && !bPrevio) {
+    solicitudDatos = true;
+  }
+  if (yAhora && !yPrevio) {
+    solicitudAuto = true;
+  }
+  bPrevio = bAhora;
+  yPrevio = yAhora;
+
   // Boton A: paro inmediato. Los demas botones quedan libres para
   // funciones futuras (demo, bocina, luces, etc.).
   if (ctl->a()) {
@@ -159,6 +186,12 @@ void procesarMando(ControllerPtr ctl) {
 }  // namespace
 
 void controlBtInit() {
+  habilitado = true;
+  solicitudDatos = false;
+  solicitudAuto = false;
+  bPrevio = false;
+  yPrevio = false;
+
   Serial.printf("[BT] %s\n", BP32.firmwareVersion());
 
   const uint8_t* direccion = BP32.localBdAddress();
@@ -178,7 +211,63 @@ void controlBtInit() {
       F("[BT] Serial: m=estado b=olvidar claves e=rebuscar x=debug"));
 }
 
+void controlBtActivar() {
+  if (habilitado) {
+    return;
+  }
+
+  habilitado = true;
+  solicitudDatos = false;
+  solicitudAuto = false;
+  bPrevio = false;
+  yPrevio = false;
+
+  BP32.enableNewBluetoothConnections(true);
+  Serial.println(
+      F("[BT] Bluetooth activado. Enciende el mando en modo emparejamiento."));
+}
+
+void controlBtDesactivar() {
+  if (!habilitado) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < BP32_MAX_GAMEPADS; ++i) {
+    if (mandos[i] != nullptr) {
+      if (mandos[i]->isConnected()) {
+        mandos[i]->disconnect();
+      }
+      mandos[i] = nullptr;
+    }
+  }
+
+  BP32.enableNewBluetoothConnections(false);
+
+  habilitado = false;
+  mandoConectado = false;
+  mandoActivo = nullptr;
+  nombreMando = "";
+  timeoutAplicado = false;
+  mandoControlaMovimiento = false;
+  solicitudDatos = false;
+  solicitudAuto = false;
+  bPrevio = false;
+  yPrevio = false;
+
+  motoresDetener();
+  Serial.println(
+      F("[BT] Bluetooth desactivado. La radio queda libre para Wi-Fi."));
+}
+
+bool controlBtHabilitado() {
+  return habilitado;
+}
+
 void controlBtTick() {
+  if (!habilitado) {
+    return;
+  }
+
   const bool datosActualizados = BP32.update();
 
   if (reactivarBusquedaPendiente &&
@@ -228,6 +317,11 @@ void controlBtTick() {
 }
 
 void controlBtImprimirEstado() {
+  if (!habilitado) {
+    Serial.println(F("[BT] Bluetooth desactivado por el modo automatico."));
+    return;
+  }
+
   ControllerPtr ctl = primerMandoConectado();
   if (ctl == nullptr) {
     Serial.println(F("[BT] Sin mando conectado."));
@@ -264,11 +358,26 @@ void controlBtAlternarDebug() {
 }
 
 bool controlBtConectado() {
-  return mandoConectado;
+  return habilitado && mandoConectado;
 }
 
 const char* controlBtNombre() {
+  if (!habilitado) {
+    return "desactivado";
+  }
   return nombreMando.length() > 0 ? nombreMando.c_str() : "desconectado";
+}
+
+bool controlBtConsumirSolicitudDatos() {
+  const bool solicitud = solicitudDatos;
+  solicitudDatos = false;
+  return solicitud;
+}
+
+bool controlBtConsumirSolicitudAuto() {
+  const bool solicitud = solicitudAuto;
+  solicitudAuto = false;
+  return solicitud;
 }
 
 #else
@@ -280,6 +389,14 @@ void controlBtInit() {
 }
 
 void controlBtTick() {}
+
+void controlBtActivar() {}
+
+void controlBtDesactivar() {}
+
+bool controlBtHabilitado() {
+  return false;
+}
 
 void controlBtImprimirEstado() {
   Serial.println(F("[BT] Bluepad32 no instalado."));
@@ -303,6 +420,14 @@ bool controlBtConectado() {
 
 const char* controlBtNombre() {
   return "Bluepad32 no instalado";
+}
+
+bool controlBtConsumirSolicitudDatos() {
+  return false;
+}
+
+bool controlBtConsumirSolicitudAuto() {
+  return false;
 }
 
 #endif

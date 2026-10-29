@@ -90,4 +90,50 @@ constexpr unsigned long MANDO_TIMEOUT_MS = 500UL;
 constexpr bool MANDO_EJE_Y_INVERTIDO = false;
 constexpr bool MANDO_EJE_X_INVERTIDO = false;
 
+// ------------------------------------------------------------------
+// Modos de operación
+// ------------------------------------------------------------------
+// AUTO: Wi-Fi encendido + Bluetooth apagado + servo escaneando.
+// MANUAL: Wi-Fi apagado + Bluetooth encendido + datos a demanda.
+// El equipo arranca en AUTO para que Telegram esté disponible; usa /manual
+// desde Telegram o el comando USB "manual" para pasar a control por mando.
+constexpr bool MODO_INICIAL_AUTOMATICO = true;
+
+// ------------------------------------------------------------------
+// Pantalla OLED SSD1306 (I2C)
+// ------------------------------------------------------------------
+// SDA y SCL se pueden cambiar si el módulo usa otros pines. No usar GPIO22:
+// ya está ocupado por IN3 del L298N.
+constexpr uint8_t PIN_OLED_SDA = 21;
+constexpr uint8_t PIN_OLED_SCL = 4;
+constexpr uint8_t OLED_DIRECCION = 0x3C;
+constexpr uint8_t OLED_ANCHO = 128;
+constexpr uint8_t OLED_ALTO = 64;
+constexpr unsigned long OLED_REFRESCO_MS = 500UL;
+constexpr unsigned long OLED_TIEMPO_DATOS_MS = 10000UL;
+
+// ------------------------------------------------------------------
+// Servo SG90 + HC-SR04
+// ------------------------------------------------------------------
+// El servo va alimentado con 5 V externos y GND común con la ESP32.
+// Solo la señal PWM va a GPIO27.
+constexpr uint8_t PIN_SERVO = 27;
+constexpr uint8_t SERVO_ANGULO_MIN = 30;
+constexpr uint8_t SERVO_ANGULO_CENTRO = 90;
+constexpr uint8_t SERVO_ANGULO_MAX = 150;
+constexpr unsigned long SERVO_ASENTADO_MS = 350UL;
+constexpr unsigned long SERVO_PAUSA_MS = 80UL;
+constexpr unsigned long SERVO_MEDICION_MANUAL_MS = 1000UL;
+
+// Tiempo máximo de espera del pulso ECHO. 30 ms equivale a ~5 m.
+constexpr unsigned long ULTRASONIDO_TIMEOUT_US = 30000UL;
+constexpr float UMBRAL_OBSTACULO_CM = 20.0f;
+
+// ------------------------------------------------------------------
+// Telemetría automática por Telegram
+// ------------------------------------------------------------------
+// En modo AUTO se envía un resumen cada 30 s para no saturar la API.
+constexpr unsigned long INTERVALO_TELEMETRIA_MS = 30000UL;
+constexpr unsigned long COOLDOWN_OBSTACULO_MS = 30000UL;
+
 #endif
