@@ -30,6 +30,11 @@ bool timeoutAplicado = false;
 bool debugMando = false;
 unsigned long ultimoDebugMandoMs = 0;
 
+// Bluepad32 4.1.0 solo ejecuta un comando "safe" por loop. Para olvidar
+// claves y volver a buscar el mando hay que hacerlo en dos pasos separados.
+bool reactivarBusquedaPendiente = false;
+unsigned long reactivarBusquedaMs = 0;
+
 bool mandoSigueConectado(ControllerPtr ctl) {
   return ctl != nullptr && ctl->isConnected();
 }
@@ -53,8 +58,18 @@ void onConnectedController(ControllerPtr ctl) {
       ultimaActividadMandoMs = millis();
       timeoutAplicado = false;
 
+      const ControllerProperties propiedades = ctl->getProperties();
       Serial.printf("[BT] Mando conectado: %s (indice %u)\n",
                     nombreMando.c_str(), static_cast<unsigned>(i));
+      Serial.printf(
+          "[BT] VID=0x%04X PID=0x%04X tipo=%u flags=0x%04X "
+          "addr=%02X:%02X:%02X:%02X:%02X:%02X\n",
+          static_cast<unsigned>(propiedades.vendor_id),
+          static_cast<unsigned>(propiedades.product_id),
+          static_cast<unsigned>(propiedades.type),
+          static_cast<unsigned>(propiedades.flags),
+          propiedades.btaddr[0], propiedades.btaddr[1], propiedades.btaddr[2],
+          propiedades.btaddr[3], propiedades.btaddr[4], propiedades.btaddr[5]);
       ctl->setPlayerLEDs(1);
       return;
     }
@@ -140,13 +155,22 @@ void controlBtInit() {
   BP32.enableNewBluetoothConnections(true);
 
   Serial.println(F("[BT] Esperando mando GameSir Nova Lite..."));
-  Serial.println(F("[BT] Pon el mando en modo Android (Home + A) o Switch."));
   Serial.println(
-      F("[BT] Serial: m=estado b=olvidar claves x=debug de ejes"));
+      F("[BT] Apagado, manten A+Home (Android, amarillo) o Y+Home "
+        "(Switch, rojo) hasta parpadeo rapido."));
+  Serial.println(
+      F("[BT] Serial: m=estado b=olvidar claves e=rebuscar x=debug"));
 }
 
 void controlBtTick() {
   const bool datosActualizados = BP32.update();
+
+  if (reactivarBusquedaPendiente &&
+      static_cast<long>(millis() - reactivarBusquedaMs) >= 0) {
+    BP32.enableNewBluetoothConnections(true);
+    reactivarBusquedaPendiente = false;
+    Serial.println(F("[BT] Busqueda Bluetooth reactivada."));
+  }
 
   if (datosActualizados) {
     for (uint8_t i = 0; i < BP32_MAX_GAMEPADS; ++i) {
@@ -200,11 +224,19 @@ void controlBtImprimirEstado() {
 
 void controlBtOlvidarClaves() {
   BP32.forgetBluetoothKeys();
-  BP32.enableNewBluetoothConnections(true);
+  reactivarBusquedaPendiente = true;
+  reactivarBusquedaMs = millis() + 500UL;
   timeoutAplicado = false;
   Serial.println(
       F("[BT] Claves Bluetooth olvidadas. Reinicia el mando y ponlo en "
         "modo emparejamiento."));
+}
+
+void controlBtReiniciarBusqueda() {
+  BP32.enableNewBluetoothConnections(false);
+  reactivarBusquedaPendiente = true;
+  reactivarBusquedaMs = millis() + 300UL;
+  Serial.println(F("[BT] Reiniciando la busqueda Bluetooth..."));
 }
 
 void controlBtAlternarDebug() {
@@ -237,6 +269,10 @@ void controlBtImprimirEstado() {
 }
 
 void controlBtOlvidarClaves() {
+  Serial.println(F("[BT] Bluepad32 no instalado."));
+}
+
+void controlBtReiniciarBusqueda() {
   Serial.println(F("[BT] Bluepad32 no instalado."));
 }
 

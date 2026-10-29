@@ -7,6 +7,7 @@ void controlBtInit();
 void controlBtTick();
 void controlBtImprimirEstado();
 void controlBtOlvidarClaves();
+void controlBtReiniciarBusqueda();
 void controlBtAlternarDebug();
 bool controlBtConectado();
 const char* controlBtNombre();

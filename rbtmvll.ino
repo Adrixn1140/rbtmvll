@@ -50,6 +50,10 @@ void procesarComandoSerial() {
       case 'B':
         controlBtOlvidarClaves();
         break;
+      case 'e':
+      case 'E':
+        controlBtReiniciarBusqueda();
+        break;
       case 'x':
       case 'X':
         controlBtAlternarDebug();

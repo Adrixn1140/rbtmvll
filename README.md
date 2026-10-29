@@ -210,17 +210,30 @@ el teléfono como puente.
 
 Para emparejar el GameSir Nova Lite:
 
-1. Enciende el mando en **modo Android** (`Home + A`) o **modo Switch**.
-2. Si no aparece, fuerza el emparejamiento con `Screenshot + Home`.
-3. Observa el Monitor Serial; debe aparecer:
+1. **Apaga el mando por completo** (mantén `Home` unos 5 s si está encendido).
+2. Apaga el Bluetooth del teléfono/PC y **olvida el mando** en ese dispositivo;
+   si no, el mando puede reconectarse allí y no entrar en emparejamiento.
+3. Enciende el mando manteniendo la combinación hasta que el LED parpadee
+   **rápido**, no solo lento:
+   - **Android:** `A + Home` → parpadeo **amarillo**.
+   - **Switch:** `Y + Home` → parpadeo **rojo**.
+   - Si el LED está **verde**, el mando está en modo receptor 2.4 GHz, no en
+     Bluetooth; apágalo y repite con `A + Home` o `Y + Home`.
+4. Si no entra en emparejamiento, mantén `Screenshot + Home` durante 3 s.
+5. Acércalo a la ESP32 (unos 20–30 cm) y observa el Monitor Serial; debe
+   aparecer:
 
 ```text
 [BT] Mando conectado: GameSir Nova Lite ...
+[BT] VID=0x.... PID=0x.... tipo=... flags=0x....
 ```
 
 El mando solo funciona si el sketch se compila con la placa **ESP32 +
 Bluepad32**. Con el core estándar `esp32:esp32` el proyecto compila, pero el
-control Bluetooth queda deshabilitado y aparece un aviso en el Monitor Serial.
+control Bluetooth queda deshabilitado y aparece `[BT] Bluepad32 no instalado`.
+Si en el arranque no ves `[BT] Bluepad32 for Arduino v4.1.0`, selecciona la
+placa **ESP32 Dev Module** del paquete **ESP32 + Bluepad32** y vuelve a subir
+el sketch con la partición **Huge APP**.
 
 ### Diagnóstico por Monitor Serial
 
@@ -230,13 +243,16 @@ Con el firmware cargado, escribe estas letras en el Monitor Serial:
 | :---: | --- |
 | `m` | Muestra si el mando está conectado, su nombre y la edad del último dato |
 | `b` | Olvida las claves Bluetooth guardadas por la ESP32 |
+| `e` | Reinicia la búsqueda Bluetooth sin borrar las claves |
 | `x` | Activa/desactiva la impresión de ejes, botones, D-pad y dirección |
 
 Si el mando no aparece:
 
-1. Envía `b` para borrar las claves guardadas.
-2. Apaga y vuelve a encender el mando en modo Android o Switch.
-3. Fuerza el emparejamiento con `Screenshot + Home`.
+1. Envía `b` para borrar las claves guardadas y espera el mensaje
+   `[BT] Busqueda Bluetooth reactivada`.
+2. Apaga y vuelve a encender el mando en modo Android o Switch, manteniendo la
+   combinación hasta el parpadeo rápido.
+3. Si sigue sin aparecer, envía `e` para reiniciar la búsqueda.
 4. Envía `m` para confirmar la conexión.
 5. Envía `x` y mueve los sticks para ver los valores reales de los ejes.
 
@@ -428,8 +444,8 @@ arduino-cli upload -p COM7 --fqbn esp32-bluepad32:esp32:esp32 \
 [BT] Bluepad32 for Arduino v4.1.0
 [BT] Direccion local: XX:XX:XX:XX:XX:XX
 [BT] Esperando mando GameSir Nova Lite...
-[BT] Pon el mando en modo Android (Home + A) o Switch.
-[BT] Serial: m=estado b=olvidar claves x=debug de ejes
+[BT] Apagado, manten A+Home (Android, amarillo) o Y+Home (Switch, rojo) hasta parpadeo rapido.
+[BT] Serial: m=estado b=olvidar claves e=rebuscar x=debug
 [WIFI] Conectando a la red: MiRed
 [SISTEMA] Listo. Monitor Serial a 115200 baudios.
 [WIFI] Conectado. IP: 192.168.1.50 | RSSI: -62 dBm
