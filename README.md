@@ -8,8 +8,9 @@ desde el celular cuando el mando está desconectado.
 
 > **Estado actual:** Etapa 1 implementada (sensores + Wi-Fi + Telegram), motores
 > L298N, mando GameSir con Bluepad32 y Bluetooth serial de respaldo
-> implementados. Pendiente: validación física del mando, MQTT, ultrasonido,
-> lectura de batería y evasión de obstáculos.
+> implementados. Los módulos de modos, OLED, servo SG90 y HC-SR04 ya están
+> creados y compilan; falta integrarlos en el `loop()` y validarlos físicamente.
+> Pendiente: MQTT, lectura de batería y evasión autónoma de obstáculos.
 >
 > **Importante:** el control principal es **ESP32 ↔ GameSir** con Bluepad32.
 > El HC-05/06/HM-10 **no** puede actuar como host HID del mando; solo sirve como
@@ -44,7 +45,7 @@ desde el celular cuando el mando está desconectado.
 | :---: | --- | :---: |
 | **1** | DHT22 + MQ-2/MQ-135 + flama IR, Wi-Fi, comandos y alertas Telegram | ✅ Implementada |
 | **2** | Telemetría MQTT cada 10 s + dashboard (Ubidots / Blynk / ThingSpeak) | ⏳ Pendiente |
-| **3** | HC-SR04, divisor de batería, L298N, 2 motores DC, mando GameSir + Bluetooth serial de respaldo y evasión reactiva | 🟡 Motores, mando y Bluetooth serial implementados; percepción y evasión pendientes |
+| **3** | HC-SR04, servo SG90, OLED, divisor de batería, L298N, 2 motores DC, mando GameSir + Bluetooth serial de respaldo y evasión reactiva | 🟡 Motores, mando, Bluetooth serial y módulos de percepción/OLED creados; integración y evasión pendientes |
 
 ### Etapa 2 — tópicos MQTT previstos
 
@@ -100,6 +101,9 @@ Publicación cada **10 segundos**:
 | `alertas.*` | Evaluación de umbrales, cooldown y normalización |
 | `motores.*` | Control no bloqueante del L298N, movimientos temporizados, control continuo y demo |
 | `control_bt.*` | Emparejamiento y lectura del GameSir Nova Lite con Bluepad32 |
+| `modo.*` | Cambio entre modo MANUAL (Wi-Fi OFF/BT ON) y AUTOMÁTICO (Wi-Fi ON/BT OFF) |
+| `oled.*` | Pantalla SSD1306 I2C: estado del modo y datos a demanda |
+| `servo_ultrasonido.*` | Barrido del SG90 y medición no bloqueante del HC-SR04 |
 | `comandos.*` | Procesamiento compartido de comandos USB y Bluetooth serial de respaldo |
 | `bluetooth_serial.*` | Puente UART con el módulo HC-05/06/HM-10 (respaldo) |
 | `secrets.h` | Credenciales reales (**ignorado por Git**) |
@@ -163,6 +167,49 @@ Criterios del mapa de pines:
 - Alimentación de motores **independiente** de la ESP32, con **GND común**.
 - El mando GameSir **no ocupa GPIO**: usa el Bluetooth Classic interno de la
   ESP32 mediante Bluepad32. El HC-05 es solo el respaldo por UART.
+
+### 4.3 Tabla consolidada de conexiones actuales
+
+Esta tabla reúne el cableado actual del prototipo, incluidos la OLED y el servo
+SG90. Haz las conexiones con la alimentación desconectada.
+
+| Componente / módulo | Terminal | Conexión a la ESP32 | Alimentación | Notas |
+| --- | --- | :---: | :---: | --- |
+| **DHT22** | DATA | **GPIO 13** | — | Lógica 3.3 V; módulo con pull-up de 10 kΩ incluido |
+| **DHT22** | VCC / GND | — | 3.3 V / GND | GND común |
+| **MQ-2 / MQ-135** | AO | **GPIO 34** | — | ADC1, solo entrada; salida 0–5 V, divisor 20 kΩ / 10 kΩ obligatorio en el montaje final |
+| **MQ-2 / MQ-135** | VCC / GND | — | 5 V / GND | GND común; precalentar antes de calibrar |
+| **Flama IR (LM393)** | DO / OUT | **GPIO 35** | — | ADC1, solo entrada; lógica 3.3 V; `LOW` = fuego |
+| **Flama IR (LM393)** | VCC / GND | — | 3.3 V / GND | GND común |
+| **HC-SR04** | TRIG | **GPIO 32** | — | Pulso de disparo de 3.3 V |
+| **HC-SR04** | ECHO | **GPIO 33** | — | **Obligatorio divisor 1 kΩ / 2 kΩ** para bajar 5 V a 3.3 V |
+| **HC-SR04** | VCC / GND | — | 5 V / GND | GND común |
+| **Servo SG90** | Señal PWM | **GPIO 27** | — | PWM de 3.3 V; rango 500–2400 µs |
+| **Servo SG90** | VCC / GND | — | **5 V externos** / GND | **No alimentar desde 3.3 V ni desde la ESP32**; GND común |
+| **OLED SSD1306** | SDA | **GPIO 21** | — | I2C; dirección asumida **0x3C** |
+| **OLED SSD1306** | SCL | **GPIO 4** | — | I2C; **no usar GPIO 22**, ocupado por IN3 |
+| **OLED SSD1306** | VCC / GND | — | 3.3 V / GND | Modelo asumido 128×64; si es 128×32 o SH1106, ajustar el código |
+| **L298N** | IN1 / IN2 | **GPIO 18 / 19** | — | Motor A |
+| **L298N** | IN3 / IN4 | **GPIO 22 / 23** | — | Motor B |
+| **L298N** | ENA / ENB | **GPIO 25 / 26** | — | PWM opcional; con jumpers puestos = velocidad fija |
+| **L298N** | +12V / GND | — | Pack 2×18650 / GND | La batería va al L298N, **no** a la ESP32 |
+| **L298N** | +5V | VIN (opcional) | 5 V | Solo si se usa el regulador del L298N; no conectar junto con USB |
+| **L298N** | OUT1 / OUT2 | — | — | Motor A |
+| **L298N** | OUT3 / OUT4 | — | — | Motor B |
+| **Divisor de batería** | Punto medio | **GPIO 36** | — | 20 kΩ desde batería (+) y 10 kΩ a GND; máx. 2.8 V |
+| **HC-05 / HC-06 / HM-10** | TX | **GPIO 16** (RX2) | — | Respaldo; el TX del módulo va al GPIO 16 |
+| **HC-05 / HC-06 / HM-10** | RX | **GPIO 17** (TX2) | — | El RX del módulo va al GPIO 17; no meter 5 V en RX |
+| **HC-05 / HC-06 / HM-10** | VCC / GND | — | 5 V o 3.3 V / GND | GND común; solo se usa si no hay mando |
+| **GameSir Nova Lite** | — | — | Batería interna | Bluetooth Classic interno de la ESP32; **no ocupa GPIO** |
+| **Alimentación ESP32** | USB o VIN | — | 5 V | Usar **una sola fuente**: USB **o** L298N +5V, nunca ambas |
+
+> **Resumen rápido de pines ocupados:** 4 (OLED SCL), 13 (DHT22), 16/17
+> (HC-05), 18/19/22/23 (L298N), 21 (OLED SDA), 25/26 (ENA/ENB), 27 (servo),
+> 32/33 (HC-SR04), 34 (MQ), 35 (flama) y 36 (batería).
+>
+> **Pendiente de validación física:** dirección I2C real de la OLED, sentido de
+> giro del SG90, divisor del ECHO y alimentación externa del servo. El código
+> compila con estos pines, pero eso no sustituye la prueba con el hardware.
 
 ---
 
@@ -344,12 +391,39 @@ Controles:
 | Stick izquierdo arriba / abajo | Avanzar / retroceder |
 | Stick derecho izquierda / derecha | Girar a la izquierda / derecha |
 | Botón **A** | Paro inmediato |
+| Botón **B** | Mostrar datos en OLED y Monitor Serial (modo manual) |
+| Botón **Y** | Volver al modo automático (modo manual) |
 | Sin datos del mando durante 500 ms | Paro automático |
 | Mando desconectado | Paro automático |
 
 > El mando tiene **prioridad** sobre el módulo HC-05. Mientras esté conectado,
 > el firmware ignora los comandos del celular. Al apagarlo o desconectarlo,
 > vuelve a funcionar el respaldo serial.
+
+#### Verificación de la configuración del GameSir
+
+Revisión hecha sobre `config.h` y `control_bt.cpp`:
+
+| Parámetro | Valor actual | Archivo | Estado |
+| --- | :---: | --- | :---: |
+| Zona muerta de sticks | **80** | `config.h` (`MANDO_ZONA_MUERTA`) | ✅ Lista |
+| Timeout sin datos | **500 ms** | `config.h` (`MANDO_TIMEOUT_MS`) | ✅ Lista |
+| Inversión eje Y (avance) | **false** | `config.h` (`MANDO_EJE_Y_INVERTIDO`) | ✅ Lista; cambiar a `true` si avanza al revés |
+| Inversión eje X (giro) | **false** | `config.h` (`MANDO_EJE_X_INVERTIDO`) | ✅ Lista; cambiar a `true` si gira al revés |
+| Stick de avance | `axisY` del stick izquierdo | `control_bt.cpp` | ✅ Listo |
+| Stick de giro | `axisRX` del stick derecho | `control_bt.cpp` | ✅ Listo |
+| Paro de emergencia | Botón **A** | `control_bt.cpp` | ✅ Listo |
+| Prioridad sobre HC-05 | Sí, mientras `controlBtConectado()` | `rbtmvll.ino` | ✅ Listo |
+| Detección de **B** y **Y** | Flancos, sin repetición al mantener | `control_bt.cpp` | ✅ Código listo |
+| Consumo de **B/Y** en OLED/modo | Funciones `controlBtConsumirSolicitudDatos/Auto` | `control_bt.*` | ⏳ Falta integrarlo en `loop()` |
+| Compilación con core estándar | 1,066,444 bytes (81 %), RAM 49,920 (15 %) | Arduino CLI | ✅ Verificada |
+| Compilación con Bluepad32 + Huge APP | 1,326,229 bytes (42 %), RAM 108,068 (32 %) | Arduino CLI | ✅ Verificada |
+| Emparejamiento físico y sentidos de giro | GameSir Nova Lite | Hardware | ⏳ Pendiente de probar |
+
+**Conclusión:** la configuración del mando para ejes, zona muerta, timeout,
+paro con **A** y prioridad sobre el HC-05 está completa y compila. Lo que queda
+pendiente es la validación física (emparejamiento, sentido de avance/giro y
+botones B/Y) porque en este equipo no hay un puerto USB de la ESP32 detectado.
 
 ### 6.3 Emparejar el celular (respaldo)
 
@@ -539,6 +613,9 @@ rbtmvll/
   - **Adafruit Unified Sensor** (dependencia de la anterior).
   - **UniversalTelegramBot** de Brian Lough (`1.3.0` o superior).
   - **ArduinoJson** (`7.x`).
+  - **Adafruit SSD1306** (`2.5.17`) y **Adafruit GFX Library** (`1.13.0`) para la OLED.
+  - **Adafruit BusIO** (`1.17.4`), dependencia de las anteriores.
+  - **ESP32Servo** (`3.2.1`) para el SG90.
 
 #### Instalar ESP32 + Bluepad32
 
@@ -592,8 +669,20 @@ arduino-cli upload -p COM9 --fqbn esp32-bluepad32:esp32:esp32 \
   --board-options PartitionScheme=huge_app .
 ```
 
-Tamaño con Bluepad32: **1,303,861 bytes (41 % de Huge APP)** y **107,436 bytes
+Tamaño con Bluepad32: **1,326,229 bytes (42 % de Huge APP)** y **108,068 bytes
 de RAM (32 %)**.
+
+> **Windows:** si la compilación de Bluepad32 falla con
+> `xtensa-esp32-elf-g++: error: CreateProcess: No such file or directory`, no
+> es un error del código. Usa una ruta de compilación corta, por ejemplo:
+>
+> ```bash
+> arduino-cli compile --fqbn esp32-bluepad32:esp32:esp32 \
+>   --board-options PartitionScheme=huge_app \
+>   --build-path C:\Temp\bp .
+> ```
+>
+> La causa habitual es el límite de longitud de la línea de comandos de Windows.
 
 #### Opción B — solo respaldo por HC-05, sin mando
 
@@ -610,8 +699,8 @@ arduino-cli compile --fqbn esp32:esp32:esp32 .
 arduino-cli upload -p COM9 --fqbn esp32:esp32:esp32 .
 ```
 
-Tamaño sin Bluepad32: **1,035,484 bytes (79 % de la partición por defecto)** y
-**48,184 bytes de RAM (14 %)**.
+Tamaño sin Bluepad32: **1,066,444 bytes (81 % de la partición por defecto)** y
+**49,920 bytes de RAM (15 %)**.
 
 > Si el puerto está ocupado, cierra el Monitor Serial de Arduino IDE antes de
 > subir. El puerto detectado en este equipo es **COM9**; cámbialo si aparece
