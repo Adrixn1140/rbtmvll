@@ -6,63 +6,10 @@
 #include "telegram_bot.h"
 #include "alertas.h"
 #include "motores.h"
-#include "control_bt.h"
+#include "comandos.h"
+#include "bluetooth_serial.h"
 
 namespace {
-
-void procesarComandoSerial() {
-  while (Serial.available() > 0) {
-    const char comando = static_cast<char>(Serial.read());
-    switch (comando) {
-      case 'a':
-      case 'A':
-        motoresMover(DireccionMovimiento::ADELANTE,
-                     DURACION_MOVIMIENTO_MANUAL_MS);
-        break;
-      case 'r':
-      case 'R':
-        motoresMover(DireccionMovimiento::ATRAS,
-                     DURACION_MOVIMIENTO_MANUAL_MS);
-        break;
-      case 'i':
-      case 'I':
-        motoresMover(DireccionMovimiento::IZQUIERDA,
-                     DURACION_MOVIMIENTO_MANUAL_MS);
-        break;
-      case 'd':
-      case 'D':
-        motoresMover(DireccionMovimiento::DERECHA,
-                     DURACION_MOVIMIENTO_MANUAL_MS);
-        break;
-      case 's':
-      case 'S':
-        motoresDetener();
-        break;
-      case 'p':
-      case 'P':
-        motoresDemo();
-        break;
-      case 'm':
-      case 'M':
-        controlBtImprimirEstado();
-        break;
-      case 'b':
-      case 'B':
-        controlBtOlvidarClaves();
-        break;
-      case 'e':
-      case 'E':
-        controlBtReiniciarBusqueda();
-        break;
-      case 'x':
-      case 'X':
-        controlBtAlternarDebug();
-        break;
-      default:
-        break;
-    }
-  }
-}
 
 void imprimirLecturas(const LecturasAmbientales& lecturas) {
   if (lecturas.dhtValida) {
@@ -90,24 +37,25 @@ void setup() {
   Serial.println();
   Serial.println(F("=============================================="));
   Serial.println(F(" IndoorWatch - Rover IoT de monitoreo"));
-  Serial.println(F(" Etapa 1 + motores L298N + mando Bluetooth"));
+  Serial.println(F(" Etapa 1 + motores L298N + Bluetooth serial"));
   Serial.println(F("=============================================="));
 
   sensoresInit();
   motoresInit();
-  controlBtInit();
+  bluetoothSerialInit();
   wifiInit();
   telegramInit();
   alertasInit();
 
-  Serial.println(F("[SISTEMA] Listo. Monitor Serial a 115200 baudios."));
+  Serial.println(
+      F("[SISTEMA] Listo. USB 115200 | Bluetooth serial 9600 baudios."));
 }
 
 void loop() {
-  // Mando Bluetooth y motores primero: el control no espera a la red.
-  controlBtTick();
+  // Bluetooth serial y motores primero: el control no espera a la red.
+  bluetoothSerialTick();
   motoresTick();
-  procesarComandoSerial();
+  comandosProcesar(Serial, "USB");
 
   // Wi-Fi: mantiene la reconexión aunque no haya datos nuevos.
   wifiTick();
@@ -125,6 +73,6 @@ void loop() {
   // Comandos bajo demanda y aviso de conexión.
   telegramTick(lecturas);
 
-  // Cede tiempo al Bluetooth/Wi-Fi y evita el watchdog.
+  // Cede tiempo al Wi-Fi y evita el watchdog.
   delay(1);
 }

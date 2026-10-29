@@ -61,20 +61,20 @@ constexpr uint8_t PIN_L298N_ENB     = 26;  // PWM opcional
 constexpr bool MOTOR_A_INVERTIDO    = false;
 constexpr bool MOTOR_B_INVERTIDO    = false;
 
-// Duración de cada movimiento manual por Telegram/Serial.
+// Duración de cada movimiento manual por Telegram.
 constexpr unsigned long DURACION_MOVIMIENTO_MANUAL_MS = 1500UL;
 
-// ------------------------------------------------------------------
-// Mando Bluetooth (Bluepad32)
-// ------------------------------------------------------------------
-// Zona muerta de los ejes: evita que un stick suelto mueva el rover.
-constexpr int MANDO_ZONA_MUERTA = 80;
+// Desde USB/Bluetooth, a/r/i/d se mantienen hasta recibir s o hasta que
+// pase este tiempo sin una nueva orden. Es un paro de seguridad.
+constexpr unsigned long DURACION_CONTROL_CONTINUO_MS = 5000UL;
 
-// Si el mando deja de enviar datos, se detienen los motores.
-constexpr unsigned long MANDO_TIMEOUT_MS = 500UL;
-
-// Cambia estas banderas si el rover avanza/gira al revés con el mando.
-constexpr bool MANDO_EJE_Y_INVERTIDO = false;
-constexpr bool MANDO_EJE_X_INVERTIDO = false;
+// ------------------------------------------------------------------
+// Módulo Bluetooth serial (HC-05 / HC-06 / HM-10)
+// ------------------------------------------------------------------
+// Módulo TX -> GPIO16 (RX2 de la ESP32)
+// Módulo RX -> GPIO17 (TX2 de la ESP32)
+constexpr uint8_t PIN_BT_RX = 16;
+constexpr uint8_t PIN_BT_TX = 17;
+constexpr unsigned long BT_BAUDIOS = 9600UL;
 
 #endif

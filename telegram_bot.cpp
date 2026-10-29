@@ -3,7 +3,7 @@
 #include "secrets.h"
 #include "wifi_manager.h"
 #include "motores.h"
-#include "control_bt.h"
+#include "bluetooth_serial.h"
 
 #include <WiFiClientSecure.h>
 #include <UniversalTelegramBot.h>
@@ -81,8 +81,8 @@ String reporteEstado(const LecturasAmbientales& lecturas) {
 
   msg += F("🚗 Motores: ");
   msg += motoresEstadoTexto();
-  msg += F("\n🎮 Mando: ");
-  msg += controlBtConectado() ? controlBtNombre() : "desconectado";
+  msg += F("\n📡 Bluetooth: ");
+  msg += bluetoothSerialEstado();
   msg += F("\n");
 
   msg += F("📶 Wi-Fi: ");
@@ -102,7 +102,7 @@ void enviarAyuda() {
   msg += F("/ping — Estado del sistema\n");
   msg += F("/motores — Control de motores\n");
   msg += F("/demo — Prueba de motores\n");
-  msg += F("/mando — Estado del mando Bluetooth\n");
+  msg += F("/bluetooth — Conectar el celular por Bluetooth serial\n");
   msg += F("/id — ID de este chat\n");
   msg += F("/ayuda — Esta ayuda");
   telegramEnviarMensaje(msg);
@@ -119,10 +119,11 @@ void enviarAyudaMotores() {
   msg += F("Los movimientos manuales duran ");
   msg += String(DURACION_MOVIMIENTO_MANUAL_MS / 1000.0f, 1);
   msg += F(" s y luego se detienen solos.\n");
-  msg += F("También puedes usar el Monitor Serial: ");
-  msg += F("a/r/i/d/s/p.\n\n");
-  msg += F("🎮 Mando: stick izquierdo arriba/abajo para avanzar/retroceder, ");
-  msg += F("stick derecho izquierda/derecha para girar. Botón A = paro.");
+  msg += F("También puedes usar USB o Bluetooth serial: ");
+  msg += F("a/r/i/d/s/p/m/h.\n\n");
+  msg += F("a/r/i/d mantienen el movimiento hasta enviar s o hasta ");
+  msg += String(DURACION_CONTROL_CONTINUO_MS / 1000UL);
+  msg += F(" s sin una nueva orden.");
   telegramEnviarMensaje(msg);
 }
 
@@ -174,15 +175,17 @@ void procesarMensaje(const telegramMessage& mensaje,
     telegramEnviarMensaje(pong);
   } else if (comando == "/id") {
     telegramEnviarMensaje(String(F("🆔 Chat ID autorizado: ")) + chatId);
-  } else if (comando == "/mando") {
-    if (controlBtConectado()) {
-      telegramEnviarMensaje(String(F("🎮 Mando conectado: ")) +
-                            controlBtNombre());
-    } else {
-      telegramEnviarMensaje(
-          F("🎮 Mando desconectado. Enciéndelo en modo Android (Home + A) "
-            "o Switch."));
-    }
+  } else if (comando == "/bluetooth") {
+    String info = F("📡 *Bluetooth serial*\n\n");
+    info += F("Módulo: HC-05 / HC-06 / HM-10 (UART).\n");
+    info += F("Cableado: TX del módulo → GPIO16, RX → GPIO17, GND común.\n");
+    info += F("Baudios: 9600.\n\n");
+    info += F("1. Empareja el celular con el módulo (PIN 1234 o 0000).\n");
+    info += F("2. Abre una app de terminal Bluetooth.\n");
+    info += F("3. Envía una sola letra: a/r/i/d/s/p.\n\n");
+    info += F("a=adelante, r=atrás, i=izquierda, d=derecha, ");
+    info += F("s=detener, p=demo, m=estado, h=ayuda.");
+    telegramEnviarMensaje(info);
   } else if (comando == "/motores" || comando == "/control") {
     enviarAyudaMotores();
   } else if (comando == "/demo" || comando == "/prueba") {

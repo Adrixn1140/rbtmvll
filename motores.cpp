@@ -25,6 +25,7 @@ constexpr uint8_t TOTAL_PASOS_DEMO =
 
 DireccionMovimiento direccionActual = DireccionMovimiento::DETENIDO;
 unsigned long finMovimientoMs = 0;
+unsigned long finControlContinuoMs = 0;
 bool movimientoTemporalActivo = false;
 bool controlContinuoActivo = false;
 
@@ -110,13 +111,14 @@ void motoresInit() {
       "ENA/ENB con jumpers (velocidad fija).\n",
       PIN_L298N_IN1, PIN_L298N_IN2, PIN_L298N_IN3, PIN_L298N_IN4);
   Serial.println(
-      "[MOTORES] Serial: a=adelante r=atras i=izquierda d=derecha "
+      "[MOTORES] USB/Bluetooth: a=adelante r=atras i=izquierda d=derecha "
       "s=detener p=demo");
 }
 
 void motoresMover(DireccionMovimiento direccion, unsigned long duracionMs) {
   demoActiva = false;
   controlContinuoActivo = false;
+  finControlContinuoMs = 0;
 
   if (direccion == DireccionMovimiento::DETENIDO) {
     motoresDetener();
@@ -136,12 +138,16 @@ void motoresControlContinuo(DireccionMovimiento direccion) {
   movimientoTemporalActivo = false;
   controlContinuoActivo = true;
 
+  // Cada orden refresca el paro de seguridad, incluso si la dirección no
+  // cambia. Así el rover no se queda avanzando si se pierde el enlace.
+  finControlContinuoMs = millis() + DURACION_CONTROL_CONTINUO_MS;
+
   if (direccion == direccionActual) {
     return;
   }
 
   aplicarDireccion(direccion);
-  Serial.printf("[MOTORES] Mando: %s\n", motoresEstadoTexto());
+  Serial.printf("[MOTORES] Control continuo: %s\n", motoresEstadoTexto());
 }
 
 void motoresDetener() {
@@ -152,6 +158,7 @@ void motoresDetener() {
   demoActiva = false;
   movimientoTemporalActivo = false;
   controlContinuoActivo = false;
+  finControlContinuoMs = 0;
   aplicarDireccion(DireccionMovimiento::DETENIDO);
 
   if (estabaActivo) {
@@ -163,6 +170,7 @@ void motoresDemo() {
   demoActiva = true;
   movimientoTemporalActivo = false;
   controlContinuoActivo = false;
+  finControlContinuoMs = 0;
   pasoDemo = 0;
   Serial.println(F("[MOTORES] Iniciando secuencia de demostracion."));
   iniciarPasoDemo();
@@ -185,6 +193,16 @@ void motoresTick() {
     }
 
     iniciarPasoDemo();
+    return;
+  }
+
+  if (controlContinuoActivo &&
+      tiempoVencido(ahora, finControlContinuoMs)) {
+    controlContinuoActivo = false;
+    finControlContinuoMs = 0;
+    aplicarDireccion(DireccionMovimiento::DETENIDO);
+    Serial.println(
+        F("[MOTORES] Sin ordenes de control continuo; detenido."));
     return;
   }
 
